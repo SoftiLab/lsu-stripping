@@ -25,7 +25,6 @@ pub struct StakingTokenData {
 #[blueprint]
 mod yield_stripping {
     struct YieldStripping {
-        //pt_rm: ResourceManager,
         yt_rm: ResourceManager,
         maturity_date: UtcDateTime, // [TO CHECK]
         lsu_validator_component: Global<Validator>,
@@ -65,33 +64,6 @@ mod yield_stripping {
             let (address_reservation, component_address) = Runtime::allocate_component_address(
                 YieldStripping::blueprint_id()
             );
-
-            // // PT
-            // let pt_rm: ResourceManager = ResourceBuilder::new_fungible(OwnerRole::None)
-            //     .divisibility(DIVISIBILITY_MAXIMUM)
-            //     .metadata(
-            //         metadata! {
-            //         init {
-            //             "name" => "Principal Token", locked;
-            //             "symbol" => "PT", locked;
-            //             "yield_stripping_component" => GlobalAddress::from(component_address), locked;
-            //         }
-            //     }
-            //     )
-            //     .mint_roles(
-            //         mint_roles! {
-            //         minter => rule!(allow_all);
-            //         // minter => rule!(require(global_caller(component_address)));
-            //         minter_updater => rule!(deny_all);
-            //     }
-            //     )
-            //     .burn_roles(
-            //         burn_roles! {
-            //         burner => rule!(require(global_caller(component_address)));
-            //         burner_updater => rule!(deny_all);
-            //     }
-            //     )
-            //     .create_with_no_initial_supply();
 
             // YT
             let yt_rm: ResourceManager = ResourceBuilder::new_ruid_non_fungible::<YieldTokenData>(
@@ -163,7 +135,6 @@ mod yield_stripping {
             assert_eq!(Self::validate_lsu(accepted_lsu), true, "Not an LSU!");
 
             (Self {
-                // pt_rm,
                 yt_rm,
                 maturity_date,
                 lsu_validator_component,
@@ -268,74 +239,6 @@ mod yield_stripping {
             return (xrd_bucket, yt_bucket);
         }
 
-        // /// Redeems the underlying LSU from PT and YT.
-        // ///
-        // /// # Arguments
-        // ///
-        // /// * `pt_bucket`: [`FungibleBucket`] - A fungible bucket of PT.
-        // /// * `yt_bucket`: [`NonFungibleBucket`] - A non fungible bucket of YT.
-        // /// * `yt_redeem_amount`: [`Decimal`] - Desired amount of YT to redeem.
-        // ///
-        // /// # Returns
-        // ///
-        // /// * [`FungibleBucket`] - A fungible bucket of the owed LSU.
-        // /// * [`Option<NonFungibleBucket>`] - Returns a non fungible bucket of YT
-        // /// if not all is redeemed.
-        // pub fn redeem(
-        //     &mut self,
-        //     pt_bucket: FungibleBucket,
-        //     yt_bucket: NonFungibleBucket,
-        //     yt_redeem_amount: Decimal
-        // ) -> (FungibleBucket, Option<NonFungibleBucket>) {
-        //     let mut data: YieldTokenData = yt_bucket.non_fungible().data();
-        //     assert!(data.underlying_lsu_amount >= yt_redeem_amount);
-        //     assert_eq!(pt_bucket.amount(), yt_redeem_amount);
-        //     //assert_eq!(pt_bucket.resource_address(), self.pt_rm.address());
-        //     assert_eq!(yt_bucket.resource_address(), self.yt_rm.address());
-
-        //     let lsu_bucket = self.lsu_vault.take(pt_bucket.amount());
-
-        //     let option_yt_bucket: Option<NonFungibleBucket> = if
-        //         data.underlying_lsu_amount > yt_redeem_amount
-        //     {
-        //         data.underlying_lsu_amount -= yt_redeem_amount;
-        //         Some(yt_bucket)
-        //     } else {
-        //         yt_bucket.burn();
-        //         None
-        //     };
-
-        //     pt_bucket.burn();
-
-        //     return (lsu_bucket, option_yt_bucket);
-        // }
-
-        // /// Redeems the underlying LSU from PT.
-        // ///
-        // /// Can only redeem from PT if maturity date has passed.
-        // ///
-        // /// # Arguments
-        // ///
-        // /// * `pt_bucket`: [`FungibleBucket`] - A fungible bucket of PT.
-        // ///
-        // /// # Returns
-        // ///
-        // /// * [`FungibleBucket`] - A fungible bucket of the owed LSU.
-        // pub fn redeem_from_pt(&mut self, pt_bucket: FungibleBucket) -> FungibleBucket {
-        //     // To redeem PT only, must wait until after maturity.
-        //     assert_eq!(
-        //         self.check_maturity(),
-        //         true,
-        //         "The Principal Token has not reached its maturity!"
-        //     );
-        //     //assert_eq!(pt_bucket.resource_address(), self.pt_rm.address());
-
-        //     let bucket_of_lsu = self.lsu_vault.take(pt_bucket.amount());
-        //     pt_bucket.burn();
-
-        //     return bucket_of_lsu;
-        // }
-
         /// Claims owed yield for the period.
         ///
         /// # Arguments
@@ -415,15 +318,15 @@ mod yield_stripping {
                 .unwrap()
         }
 
-        // /// Retrieves the `ResourceAddress` of PT.
-        // ///
-        // /// # Returns
-        // ///
-        // /// * [`ResourceAddress`] - The address of PT.
-        // pub fn pt_address(&self) -> ResourceAddress {
-        //     //self.pt_rm.address()
-        //     self.staking_rm.address()
-        // }
+        /// Retrieves the `ResourceAddress` of LP.
+        ///
+        /// # Returns
+        ///
+        /// * [`ResourceAddress`] - The address of LP.
+        pub fn lp_address(&self) -> ResourceAddress {
+            //self.pt_rm.address()
+            self.staking_rm.address()
+        }
 
         /// Retrieves the `ResourceAddress` of YT.
         ///
