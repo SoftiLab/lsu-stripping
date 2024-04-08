@@ -1,12 +1,5 @@
 use scrypto::prelude::*;
 
-#[derive(ScryptoSbor)]
-pub enum Expiry {
-    TwelveMonths,
-    EighteenMonths,
-    TwentyFourMonths,
-}
-
 #[derive(ScryptoSbor, NonFungibleData)]
 pub struct YieldTokenData {
     underlying_lsu_resource: ResourceAddress,
@@ -22,14 +15,17 @@ pub struct StakingTokenData {
     staking_time: u64,
 }
 
+#[derive(ScryptoSbor)]
+pub struct LSU {
+    lsu_resource: ResourceAddress,
+    lsu_amount: Decimal,
+    maturity_date: UtcDateTime,
+}
+
 #[blueprint]
 mod yield_stripping {
     struct YieldStripping {
         yt_rm: ResourceManager,
-        maturity_date: UtcDateTime, // [TO CHECK]
-        lsu_validator_component: Global<Validator>,
-        lsu_address: ResourceAddress,
-        lsu_vault: FungibleVault,
 
         xrd_vault: FungibleVault,
         fee_vault: FungibleVault,
@@ -37,30 +33,16 @@ mod yield_stripping {
         stripping_fee: Decimal,
         yt_fee: Decimal,
         lsu_vaults: HashMap<ResourceAddress, Vault>,
+        lsu: Vec<LSU>,
+        expiry_days: i64,
     }
 
     impl YieldStripping {
         pub fn instantiate_yield_stripping(
-            expiry: Expiry,
-            accepted_lsu: ResourceAddress, // To remove, will check all LSU
+            expiry_days: i64,
             stripping_fee: Decimal,
             yt_fee: Decimal
         ) -> Global<YieldStripping> {
-            let maturity_date = match expiry {
-                Expiry::TwelveMonths => {
-                    let current_time = Clock::current_time_rounded_to_seconds();
-                    UtcDateTime::from_instant(&current_time.add_days(365).unwrap()).ok().unwrap()
-                }
-                Expiry::EighteenMonths => {
-                    let current_time = Clock::current_time_rounded_to_seconds();
-                    UtcDateTime::from_instant(&current_time.add_days(547).unwrap()).ok().unwrap()
-                }
-                Expiry::TwentyFourMonths => {
-                    let current_time = Clock::current_time_rounded_to_seconds();
-                    UtcDateTime::from_instant(&current_time.add_days(730).unwrap()).ok().unwrap()
-                }
-            };
-
             let (address_reservation, component_address) = Runtime::allocate_component_address(
                 YieldStripping::blueprint_id()
             );
@@ -130,22 +112,16 @@ mod yield_stripping {
                     )
                     .create_with_no_initial_supply();
 
-            let lsu_validator_component = Self::retrieve_validator_component(accepted_lsu);
-
-            assert_eq!(Self::validate_lsu(accepted_lsu), true, "Not an LSU!");
-
             (Self {
                 yt_rm,
-                maturity_date,
-                lsu_validator_component,
-                lsu_address: accepted_lsu,
-                lsu_vault: FungibleVault::new(accepted_lsu),
                 xrd_vault: FungibleVault::new(XRD),
                 fee_vault: FungibleVault::new(XRD),
                 staking_rm,
                 stripping_fee,
                 yt_fee,
                 lsu_vaults: HashMap::new(),
+                lsu: Vec::new(),
+                expiry_days,
             })
                 .instantiate()
                 .prepare_to_globalize(OwnerRole::None)
@@ -206,27 +182,42 @@ mod yield_stripping {
             &mut self,
             lsu_token: FungibleBucket
         ) -> (FungibleBucket, NonFungibleBucket) {
-            assert_ne!(self.check_maturity(), true, "The expiry date has passed!");
+            //assert_ne!(self.check_maturity(), true, "The expiry date has passed!");
             //assert_eq!(lsu_token.resource_address(), self.lsu_address);
-            assert_eq!(Self::validate_lsu(lsu_token.resource_address()), true, "Not an LSU!");
+            let lsu_address = lsu_token.resource_address();
+            let lsu_validator_component = Self::retrieve_validator_component(lsu_address);
+            assert_eq!(Self::validate_lsu(lsu_address), true, "Not an LSU!");
 
+            let lsu_address = lsu_token.resource_address();
             let lsu_amount = lsu_token.amount();
-            let redemption_value = self.lsu_validator_component.get_redemption_value(
-                lsu_token.amount()
-            );
+            let redemption_value = lsu_validator_component.get_redemption_value(lsu_token.amount());
 
             //let pt_bucket = self.pt_rm.mint(lsu_amount).as_fungible();
             let yt_bucket = self.yt_rm
                 .mint_ruid_non_fungible(YieldTokenData {
-                    underlying_lsu_resource: self.lsu_address,
+                    underlying_lsu_resource: lsu_address,
                     underlying_lsu_amount: lsu_amount,
                     redemption_value_at_start: redemption_value,
                     yield_claimed: Decimal::ZERO,
-                    maturity_date: self.maturity_date,
+                    maturity_date: self.expiry_date(),
                 })
                 .as_non_fungible();
 
-            self.lsu_vault.put(lsu_token);
+            // self.lsu_vault.put(lsu_token);
+            if let Some(vault) = self.lsu_vaults.get_mut(&lsu_token.resource_address()) {
+                vault.put(lsu_token.into());
+            } else {
+                self.lsu_vaults.insert(
+                    lsu_token.resource_address(),
+                    Vault::with_bucket(lsu_token.into())
+                );
+            }
+
+            self.lsu.push(LSU {
+                lsu_resource: lsu_address,
+                lsu_amount: lsu_amount,
+                maturity_date: self.expiry_date(),
+            });
 
             let xrd_returned = lsu_amount - lsu_amount * self.stripping_fee;
 
@@ -252,7 +243,7 @@ mod yield_stripping {
         pub fn claim_yield(&mut self, yt_proof: NonFungibleProof) -> Bucket {
             // Can no longer claim yield after maturity.
             // [TO CHECK]
-            assert_ne!(self.check_maturity(), true, "The yield token has reached its maturity!");
+            //assert_ne!(self.check_maturity(), true, "The yield token has reached its maturity!");
 
             let checked_proof = yt_proof.check(self.yt_rm.address());
             let mut data: YieldTokenData = checked_proof.non_fungible().data();
@@ -261,17 +252,24 @@ mod yield_stripping {
             // value and redemption value at start.
             let yield_owed = self.calc_yield_owed(&data);
 
+            let mut lsu_validator_component = Self::retrieve_validator_component(
+                data.underlying_lsu_resource
+            );
             // Calc amount of LSU to redeem to achieve yield owed.
-            let required_lsu_for_yield_owed = self.calc_required_lsu_for_yield_owed(yield_owed);
+            let required_lsu_for_yield_owed = self.calc_required_lsu_for_yield_owed(
+                yield_owed,
+                lsu_validator_component
+            );
 
             // Burn the yield token by the amount of LSU required to redeem.
             data.underlying_lsu_amount -= required_lsu_for_yield_owed;
             data.yield_claimed += yield_owed;
 
             // LSU amount decreases but redemption value is the same
-            let required_lsu_bucket = self.lsu_vault.take(required_lsu_for_yield_owed);
+            let lsu_vault = self.lsu_vaults.get_mut(&data.underlying_lsu_resource).unwrap();
+            let required_lsu_bucket = lsu_vault.take(required_lsu_for_yield_owed);
 
-            self.lsu_validator_component.unstake(required_lsu_bucket.into())
+            lsu_validator_component.unstake(required_lsu_bucket.into())
         }
 
         /// Calculates earned yield of YT.
@@ -284,7 +282,10 @@ mod yield_stripping {
         ///
         /// * [`Decimal`] - The calculated earned yield from YT for the current period.
         fn calc_yield_owed(&self, data: &YieldTokenData) -> Decimal {
-            let redemption_value = self.lsu_validator_component.get_redemption_value(
+            let lsu_validator_component = Self::retrieve_validator_component(
+                data.underlying_lsu_resource
+            );
+            let redemption_value = lsu_validator_component.get_redemption_value(
                 data.underlying_lsu_amount
             );
 
@@ -308,9 +309,13 @@ mod yield_stripping {
         /// # Returns
         ///
         /// * [`Decimal`] - The required LSU amount to redeem yield owed.
-        fn calc_required_lsu_for_yield_owed(&self, yield_owed: Decimal) -> Decimal {
-            let total_xrd_staked = self.lsu_validator_component.total_stake_xrd_amount();
-            let total_lsu_supply = self.lsu_validator_component.total_stake_unit_supply();
+        fn calc_required_lsu_for_yield_owed(
+            &self,
+            yield_owed: Decimal,
+            lsu_validator_component: Global<Validator>
+        ) -> Decimal {
+            let total_xrd_staked = lsu_validator_component.total_stake_xrd_amount();
+            let total_lsu_supply = lsu_validator_component.total_stake_unit_supply();
 
             total_xrd_staked
                 .checked_div(total_lsu_supply)
@@ -337,31 +342,21 @@ mod yield_stripping {
             self.yt_rm.address()
         }
 
-        /// Retrieves the `ResourceAddress` of the underlying LSU.
-        ///
-        /// # Returns
-        ///
-        /// * [`ResourceAddress`] - The address of the underlying LSU.
-        pub fn underlying_resource(&self) -> ResourceAddress {
-            self.lsu_address
-        }
-
-        /// Retrieves the maturity date.
-        ///
-        /// # Returns
-        ///
-        /// * [`UtcDateTime`] - The maturity date.
-        pub fn maturity_date(&self) -> UtcDateTime {
-            self.maturity_date
-        }
-
         /// Checks whether maturity date has been reached.
-        pub fn check_maturity(&self) -> bool {
+        pub fn check_maturity(maturity_date: UtcDateTime) -> bool {
             Clock::current_time_comparison(
-                self.maturity_date.to_instant(),
+                maturity_date.to_instant(),
                 TimePrecision::Second,
                 TimeComparisonOperator::Gte
             )
+        }
+
+        /// Returns the expiry date.
+        pub fn expiry_date(&self) -> UtcDateTime {
+            let current_time = Clock::current_time_rounded_to_seconds();
+            UtcDateTime::from_instant(&current_time.add_days(self.expiry_days).unwrap())
+                .ok()
+                .unwrap()
         }
     }
 }
