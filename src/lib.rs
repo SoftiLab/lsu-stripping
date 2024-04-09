@@ -15,7 +15,7 @@ pub struct StakingTokenData {
     staking_time: u64,
 }
 
-#[derive(ScryptoSbor)]
+#[derive(ScryptoSbor, Clone)]
 pub struct LSU {
     lsu_resource: ResourceAddress,
     lsu_amount: Decimal,
@@ -166,6 +166,33 @@ mod yield_stripping {
                 .as_non_fungible();
             self.xrd_vault.put(xrd_token);
             lp_bucket
+        }
+
+        /// Check if some LSU can be unstaked.
+        pub fn check_unstake(&mut self) -> Vec<Bucket> {
+            let (lsu_mature, lsu_immature): (Vec<_>, Vec<_>) = self.lsu
+                .iter()
+                // Check if the maturity date of the LSU has been reached
+                .partition(|lsu| Self::check_maturity(lsu.maturity_date));
+
+            let unstaked_lsu = lsu_mature
+                .into_iter()
+                .map(|lsu| {
+                    let mut lsu_validator_component = Self::retrieve_validator_component(
+                        lsu.lsu_resource
+                    );
+                    let lsu_vault = self.lsu_vaults.get_mut(&lsu.lsu_resource).unwrap();
+                    let required_lsu_bucket = lsu_vault.take(lsu.lsu_amount);
+                    lsu_validator_component.unstake(required_lsu_bucket.into())
+                })
+                .collect::<Vec<Bucket>>();
+
+            self.lsu = lsu_immature
+                .into_iter()
+                .map(|lsu| lsu.clone())
+                .collect::<Vec<_>>();
+
+            unstaked_lsu
         }
 
         /// Tokenizes the LSU to its PT and YT.
@@ -343,6 +370,7 @@ mod yield_stripping {
         }
 
         /// Checks whether maturity date has been reached.
+        /// Retuens true if cureent time >= maturity date.
         pub fn check_maturity(maturity_date: UtcDateTime) -> bool {
             Clock::current_time_comparison(
                 maturity_date.to_instant(),
