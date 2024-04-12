@@ -26,7 +26,7 @@ mod yield_stripping {
         fee_vault: FungibleVault,
         stripping_fee: Decimal,
         yt_fee: Decimal,
-        lsu_vaults: HashMap<ResourceAddress, Vault>,
+        lsu_vaults: HashMap<ResourceAddress, FungibleVault>,
         lsu: Vec<LSU>,
         expiry_days: i64,
     }
@@ -152,6 +152,36 @@ mod yield_stripping {
             input_lsu_address == ResourceAddress::try_from(lsu_address).unwrap()
         }
 
+        /// Mint sXRD with XRD.
+        pub fn mint_sxrd(&mut self, xrd_token: FungibleBucket) -> FungibleBucket {
+            assert_eq!(xrd_token.resource_address(), XRD);
+            let xrd_amount = xrd_token.amount();
+            self.xrd_vault.put(xrd_token);
+            self.sxrd_rm.mint(xrd_amount).as_fungible()
+        }
+
+        /// Redeem sXRD with XRD.
+        pub fn redeem_sxrd(&mut self, sxrd_bucket: FungibleBucket) -> FungibleBucket {
+            assert_eq!(sxrd_bucket.resource_address(), self.sxrd_rm.address());
+            // TODO : Redeem LSU if not enough XRD.
+            let lsu_bucket = self.xrd_vault.take(sxrd_bucket.amount());
+            sxrd_bucket.burn();
+            lsu_bucket
+        }
+
+        /// Redeem LSU with sXRD.
+        fn redeem_lsu(
+            &mut self,
+            sxrd_bucket: FungibleBucket,
+            lsu_address: ResourceAddress
+        ) -> FungibleBucket {
+            assert_eq!(sxrd_bucket.resource_address(), self.sxrd_rm.address());
+            let lsu_vault = self.lsu_vaults.get_mut(&lsu_address).unwrap();
+            let lsu_bucket = lsu_vault.take(sxrd_bucket.amount());
+            sxrd_bucket.burn();
+            lsu_bucket
+        }
+
         /// Check if some LSU can be unstaked.
         pub fn check_unstake(&mut self) -> Vec<Bucket> {
             let (lsu_mature, lsu_immature): (Vec<_>, Vec<_>) = self.lsu
@@ -223,7 +253,7 @@ mod yield_stripping {
             } else {
                 self.lsu_vaults.insert(
                     lsu_token.resource_address(),
-                    Vault::with_bucket(lsu_token.into())
+                    FungibleVault::with_bucket(lsu_token.into())
                 );
             }
 
