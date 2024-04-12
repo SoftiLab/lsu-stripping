@@ -9,12 +9,6 @@ pub struct YieldTokenData {
     maturity_date: UtcDateTime,
 }
 
-#[derive(ScryptoSbor, NonFungibleData)]
-pub struct StakingTokenData {
-    staking_amount: Decimal,
-    staking_time: u64,
-}
-
 #[derive(ScryptoSbor, Clone)]
 pub struct LSU {
     lsu_resource: ResourceAddress,
@@ -25,11 +19,11 @@ pub struct LSU {
 #[blueprint]
 mod yield_stripping {
     struct YieldStripping {
+        sxrd_rm: ResourceManager,
         yt_rm: ResourceManager,
 
         xrd_vault: FungibleVault,
         fee_vault: FungibleVault,
-        staking_rm: ResourceManager,
         stripping_fee: Decimal,
         yt_fee: Decimal,
         lsu_vaults: HashMap<ResourceAddress, Vault>,
@@ -43,9 +37,45 @@ mod yield_stripping {
             stripping_fee: Decimal,
             yt_fee: Decimal
         ) -> Global<YieldStripping> {
+            assert!(
+                Decimal::ZERO <= stripping_fee && stripping_fee <= Decimal::ONE,
+                "Stripping fee must be between zero and one!"
+            );
+            assert!(
+                Decimal::ZERO <= yt_fee && yt_fee <= Decimal::ONE,
+                "Yield token fee must be between zero and one!"
+            );
+
             let (address_reservation, component_address) = Runtime::allocate_component_address(
                 YieldStripping::blueprint_id()
             );
+
+            // sXRD
+            let sxrd_rm: ResourceManager = ResourceBuilder::new_fungible(OwnerRole::None)
+                .divisibility(DIVISIBILITY_MAXIMUM)
+                .metadata(
+                    metadata! {
+                    init {
+                        "name" => "sXRD Token", locked;
+                        "symbol" => "sXRD", locked;
+                        "yield_tokenizer_component" => GlobalAddress::from(component_address), locked;
+                    }
+                }
+                )
+                .mint_roles(
+                    mint_roles! {
+                    minter => rule!(allow_all);
+                    // minter => rule!(require(global_caller(component_address)));
+                    minter_updater => rule!(deny_all);
+                }
+                )
+                .burn_roles(
+                    burn_roles! {
+                    burner => rule!(require(global_caller(component_address)));
+                    burner_updater => rule!(deny_all);
+                }
+                )
+                .create_with_no_initial_supply();
 
             // YT
             let yt_rm: ResourceManager = ResourceBuilder::new_ruid_non_fungible::<YieldTokenData>(
@@ -80,43 +110,11 @@ mod yield_stripping {
                 )
                 .create_with_no_initial_supply();
 
-            // LP
-            let staking_rm: ResourceManager =
-                ResourceBuilder::new_ruid_non_fungible::<StakingTokenData>(OwnerRole::None)
-                    .metadata(
-                        metadata! {
-                init {
-                    "name" => "Staking LP Token", locked;
-                    "symbol" => "LP", locked;
-                    "yield_stripping_component" => GlobalAddress::from(component_address), locked;
-                }
-            }
-                    )
-                    .mint_roles(
-                        mint_roles! {
-                minter => rule!(require(global_caller(component_address)));
-                minter_updater => rule!(deny_all);
-            }
-                    )
-                    .burn_roles(
-                        burn_roles! {
-                burner => rule!(allow_all);
-                burner_updater => rule!(deny_all);
-            }
-                    )
-                    .non_fungible_data_update_roles(
-                        non_fungible_data_update_roles! {
-                non_fungible_data_updater => rule!(require(global_caller(component_address)));
-                non_fungible_data_updater_updater => rule!(deny_all);
-            }
-                    )
-                    .create_with_no_initial_supply();
-
             (Self {
+                sxrd_rm,
                 yt_rm,
                 xrd_vault: FungibleVault::new(XRD),
-                fee_vault: FungibleVault::new(XRD),
-                staking_rm,
+                fee_vault: FungibleVault::new(sxrd_rm.address()),
                 stripping_fee,
                 yt_fee,
                 lsu_vaults: HashMap::new(),
@@ -152,20 +150,6 @@ mod yield_stripping {
                 .unwrap_or_else(|| Runtime::panic(String::from("Not an LSU!")));
 
             input_lsu_address == ResourceAddress::try_from(lsu_address).unwrap()
-        }
-
-        /// Stake XRD to provide liquidity.
-        pub fn stake_xrd(&mut self, xrd_token: FungibleBucket) -> NonFungibleBucket {
-            assert_eq!(xrd_token.resource_address(), XRD);
-            let lp_bucket = self.staking_rm
-                .mint_ruid_non_fungible(StakingTokenData {
-                    staking_amount: xrd_token.amount(),
-                    staking_time: (Clock::current_time_rounded_to_minutes().seconds_since_unix_epoch /
-                        60) as u64,
-                })
-                .as_non_fungible();
-            self.xrd_vault.put(xrd_token);
-            lp_bucket
         }
 
         /// Check if some LSU can be unstaked.
@@ -219,7 +203,10 @@ mod yield_stripping {
             let lsu_amount = lsu_token.amount();
             let redemption_value = lsu_validator_component.get_redemption_value(lsu_token.amount());
 
-            //let pt_bucket = self.pt_rm.mint(lsu_amount).as_fungible();
+            let mut sxrd_bucket = self.sxrd_rm.mint(lsu_amount).as_fungible();
+
+            self.fee_vault.put(sxrd_bucket.take(lsu_amount * self.stripping_fee));
+
             let yt_bucket = self.yt_rm
                 .mint_ruid_non_fungible(YieldTokenData {
                     underlying_lsu_resource: lsu_address,
@@ -242,19 +229,12 @@ mod yield_stripping {
 
             self.lsu.push(LSU {
                 lsu_resource: lsu_address,
-                lsu_amount: lsu_amount,
+                lsu_amount,
                 maturity_date: self.expiry_date(),
             });
 
-            let xrd_returned = lsu_amount - lsu_amount * self.stripping_fee;
-
-            assert!(self.xrd_vault.amount() >= xrd_returned, "Not enough XRD staked!");
-            let xrd_bucket = self.xrd_vault.take(xrd_returned);
-
-            self.fee_vault.put(self.xrd_vault.take(lsu_amount * self.stripping_fee));
-
             //return (pt_bucket, yt_bucket);
-            return (xrd_bucket, yt_bucket);
+            return (sxrd_bucket, yt_bucket);
         }
 
         /// Claims owed yield for the period.
@@ -350,14 +330,13 @@ mod yield_stripping {
                 .unwrap()
         }
 
-        /// Retrieves the `ResourceAddress` of LP.
+        /// Retrieves the `ResourceAddress` of sXRD.
         ///
         /// # Returns
         ///
-        /// * [`ResourceAddress`] - The address of LP.
-        pub fn lp_address(&self) -> ResourceAddress {
-            //self.pt_rm.address()
-            self.staking_rm.address()
+        /// * [`ResourceAddress`] - The address of sXRD.
+        pub fn pt_address(&self) -> ResourceAddress {
+            self.sxrd_rm.address()
         }
 
         /// Retrieves the `ResourceAddress` of YT.
