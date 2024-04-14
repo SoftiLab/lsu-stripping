@@ -6,14 +6,12 @@ pub struct YieldTokenData {
     underlying_lsu_amount: Decimal,
     redemption_value_at_start: Decimal,
     yield_claimed: Decimal,
-    maturity_date: UtcDateTime,
 }
 
 #[derive(ScryptoSbor, Clone)]
 pub struct LSU {
     lsu_resource: ResourceAddress,
     lsu_amount: Decimal,
-    maturity_date: UtcDateTime,
 }
 
 #[blueprint]
@@ -31,14 +29,12 @@ mod yield_stripping {
         lsu_vault: FungibleVault,
 
         lsu: Vec<LSU>,
-        expiry_days: i64,
     }
 
     impl YieldStripping {
         pub fn instantiate_yield_stripping(
             accepted_lsu: ResourceAddress,
 
-            expiry_days: i64,
             stripping_fee: Decimal,
             yt_fee: Decimal
         ) -> Global<YieldStripping> {
@@ -130,7 +126,6 @@ mod yield_stripping {
                 lsu_vault: FungibleVault::new(accepted_lsu),
 
                 lsu: Vec::new(),
-                expiry_days,
             })
                 .instantiate()
                 .prepare_to_globalize(OwnerRole::None)
@@ -220,7 +215,6 @@ mod yield_stripping {
                     underlying_lsu_amount: lsu_amount,
                     redemption_value_at_start: redemption_value,
                     yield_claimed: Decimal::ZERO,
-                    maturity_date: self.expiry_date(),
                 })
                 .as_non_fungible();
 
@@ -229,7 +223,6 @@ mod yield_stripping {
             self.lsu.push(LSU {
                 lsu_resource: self.lsu_address,
                 lsu_amount,
-                maturity_date: self.expiry_date(),
             });
 
             //return (pt_bucket, yt_bucket);
@@ -353,24 +346,6 @@ mod yield_stripping {
         /// * [`ResourceAddress`] - The address of the underlying LSU.
         pub fn underlying_resource(&self) -> ResourceAddress {
             self.lsu_address
-        }
-
-        /// Checks whether maturity date has been reached.
-        /// Retuens true if cureent time >= maturity date.
-        pub fn check_maturity(maturity_date: UtcDateTime) -> bool {
-            Clock::current_time_comparison(
-                maturity_date.to_instant(),
-                TimePrecision::Second,
-                TimeComparisonOperator::Gte
-            )
-        }
-
-        /// Returns the expiry date.
-        pub fn expiry_date(&self) -> UtcDateTime {
-            let current_time = Clock::current_time_rounded_to_seconds();
-            UtcDateTime::from_instant(&current_time.add_days(self.expiry_days).unwrap())
-                .ok()
-                .unwrap()
         }
     }
 }
