@@ -166,7 +166,7 @@ mod yield_stripping {
             self.sxrd_rm.mint(xrd_amount).as_fungible()
         }
 
-        /// Redeem sXRD with XRD.
+        /// Redeem sXRD for XRD.
         pub fn redeem_sxrd(&mut self, sxrd_bucket: FungibleBucket) -> FungibleBucket {
             assert_eq!(sxrd_bucket.resource_address(), self.sxrd_rm.address());
             // TODO : Redeem LSU if not enough XRD.
@@ -197,7 +197,6 @@ mod yield_stripping {
             &mut self,
             lsu_token: FungibleBucket
         ) -> (FungibleBucket, NonFungibleBucket) {
-            //assert_ne!(self.check_maturity(), true, "The expiry date has passed!");
             assert_eq!(lsu_token.resource_address(), self.lsu_address);
 
             let lsu_amount = lsu_token.amount();
@@ -225,7 +224,6 @@ mod yield_stripping {
                 lsu_amount,
             });
 
-            //return (pt_bucket, yt_bucket);
             return (sxrd_bucket, yt_bucket);
         }
 
@@ -240,9 +238,6 @@ mod yield_stripping {
         /// * [`Bucket`] - A bucket of the Unstake NFT.
         /// Note: https://docs.radixdlt.com/docs/validator#unstake-nft
         pub fn claim_yield(&mut self, yt_proof: NonFungibleProof) -> Bucket {
-            // Can no longer claim yield after maturity.
-            // [TO CHECK]
-            //assert_ne!(self.check_maturity(), true, "The yield token has reached its maturity!");
 
             let checked_proof = yt_proof.check(self.yt_rm.address());
             let mut data: YieldTokenData = checked_proof.non_fungible().data();
