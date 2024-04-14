@@ -26,13 +26,18 @@ mod yield_stripping {
         fee_vault: FungibleVault,
         stripping_fee: Decimal,
         yt_fee: Decimal,
-        lsu_vaults: HashMap<ResourceAddress, FungibleVault>,
+        lsu_validator_component: Global<Validator>,
+        lsu_address: ResourceAddress,
+        lsu_vault: FungibleVault,
+
         lsu: Vec<LSU>,
         expiry_days: i64,
     }
 
     impl YieldStripping {
         pub fn instantiate_yield_stripping(
+            accepted_lsu: ResourceAddress,
+
             expiry_days: i64,
             stripping_fee: Decimal,
             yt_fee: Decimal
@@ -110,6 +115,9 @@ mod yield_stripping {
                 )
                 .create_with_no_initial_supply();
 
+            let lsu_validator_component = Self::retrieve_validator_component(accepted_lsu);
+            assert_eq!(Self::validate_lsu(accepted_lsu), true, "Not an LSU!");
+
             (Self {
                 sxrd_rm,
                 yt_rm,
@@ -117,7 +125,10 @@ mod yield_stripping {
                 fee_vault: FungibleVault::new(sxrd_rm.address()),
                 stripping_fee,
                 yt_fee,
-                lsu_vaults: HashMap::new(),
+                lsu_validator_component,
+                lsu_address: accepted_lsu,
+                lsu_vault: FungibleVault::new(accepted_lsu),
+
                 lsu: Vec::new(),
                 expiry_days,
             })
@@ -170,43 +181,11 @@ mod yield_stripping {
         }
 
         /// Redeem LSU with sXRD.
-        fn redeem_lsu(
-            &mut self,
-            sxrd_bucket: FungibleBucket,
-            lsu_address: ResourceAddress
-        ) -> FungibleBucket {
+        fn redeem_lsu(&mut self, sxrd_bucket: FungibleBucket) -> FungibleBucket {
             assert_eq!(sxrd_bucket.resource_address(), self.sxrd_rm.address());
-            let lsu_vault = self.lsu_vaults.get_mut(&lsu_address).unwrap();
-            let lsu_bucket = lsu_vault.take(sxrd_bucket.amount());
+            let lsu_bucket = self.lsu_vault.take(sxrd_bucket.amount());
             sxrd_bucket.burn();
             lsu_bucket
-        }
-
-        /// Check if some LSU can be unstaked.
-        pub fn check_unstake(&mut self) -> Vec<Bucket> {
-            let (lsu_mature, lsu_immature): (Vec<_>, Vec<_>) = self.lsu
-                .iter()
-                // Check if the maturity date of the LSU has been reached
-                .partition(|lsu| Self::check_maturity(lsu.maturity_date));
-
-            let unstaked_lsu = lsu_mature
-                .into_iter()
-                .map(|lsu| {
-                    let mut lsu_validator_component = Self::retrieve_validator_component(
-                        lsu.lsu_resource
-                    );
-                    let lsu_vault = self.lsu_vaults.get_mut(&lsu.lsu_resource).unwrap();
-                    let required_lsu_bucket = lsu_vault.take(lsu.lsu_amount);
-                    lsu_validator_component.unstake(required_lsu_bucket.into())
-                })
-                .collect::<Vec<Bucket>>();
-
-            self.lsu = lsu_immature
-                .into_iter()
-                .map(|lsu| lsu.clone())
-                .collect::<Vec<_>>();
-
-            unstaked_lsu
         }
 
         /// Tokenizes the LSU to its PT and YT.
@@ -224,14 +203,12 @@ mod yield_stripping {
             lsu_token: FungibleBucket
         ) -> (FungibleBucket, NonFungibleBucket) {
             //assert_ne!(self.check_maturity(), true, "The expiry date has passed!");
-            //assert_eq!(lsu_token.resource_address(), self.lsu_address);
-            let lsu_address = lsu_token.resource_address();
-            let lsu_validator_component = Self::retrieve_validator_component(lsu_address);
-            assert_eq!(Self::validate_lsu(lsu_address), true, "Not an LSU!");
+            assert_eq!(lsu_token.resource_address(), self.lsu_address);
 
-            let lsu_address = lsu_token.resource_address();
             let lsu_amount = lsu_token.amount();
-            let redemption_value = lsu_validator_component.get_redemption_value(lsu_token.amount());
+            let redemption_value = self.lsu_validator_component.get_redemption_value(
+                lsu_token.amount()
+            );
 
             let mut sxrd_bucket = self.sxrd_rm.mint(lsu_amount).as_fungible();
 
@@ -239,7 +216,7 @@ mod yield_stripping {
 
             let yt_bucket = self.yt_rm
                 .mint_ruid_non_fungible(YieldTokenData {
-                    underlying_lsu_resource: lsu_address,
+                    underlying_lsu_resource: self.lsu_address,
                     underlying_lsu_amount: lsu_amount,
                     redemption_value_at_start: redemption_value,
                     yield_claimed: Decimal::ZERO,
@@ -247,18 +224,10 @@ mod yield_stripping {
                 })
                 .as_non_fungible();
 
-            // self.lsu_vault.put(lsu_token);
-            if let Some(vault) = self.lsu_vaults.get_mut(&lsu_token.resource_address()) {
-                vault.put(lsu_token.into());
-            } else {
-                self.lsu_vaults.insert(
-                    lsu_token.resource_address(),
-                    FungibleVault::with_bucket(lsu_token.into())
-                );
-            }
+            self.lsu_vault.put(lsu_token);
 
             self.lsu.push(LSU {
-                lsu_resource: lsu_address,
+                lsu_resource: self.lsu_address,
                 lsu_amount,
                 maturity_date: self.expiry_date(),
             });
@@ -303,8 +272,7 @@ mod yield_stripping {
             data.yield_claimed += yield_owed;
 
             // LSU amount decreases but redemption value is the same
-            let lsu_vault = self.lsu_vaults.get_mut(&data.underlying_lsu_resource).unwrap();
-            let required_lsu_bucket = lsu_vault.take(required_lsu_for_yield_owed);
+            let required_lsu_bucket = self.lsu_vault.take(required_lsu_for_yield_owed);
 
             lsu_validator_component.unstake(required_lsu_bucket.into())
         }
@@ -376,6 +344,15 @@ mod yield_stripping {
         /// * [`ResourceAddress`] - The address of YT.
         pub fn yt_address(&self) -> ResourceAddress {
             self.yt_rm.address()
+        }
+
+        /// Retrieves the `ResourceAddress` of the underlying LSU.
+        ///
+        /// # Returns
+        ///
+        /// * [`ResourceAddress`] - The address of the underlying LSU.
+        pub fn underlying_resource(&self) -> ResourceAddress {
+            self.lsu_address
         }
 
         /// Checks whether maturity date has been reached.
