@@ -286,10 +286,8 @@ mod yield_stripping {
                     .non_fungible_local_ids(limit)
                     .into_iter()
                     .filter(|id| {
-                        let nf_bucket = vault.take_non_fungible(&id);
-
-                        let nft = nf_bucket.non_fungible::<UnstakeData>();
-                        let data = nft.data();
+                        let resource_manager = vault.resource_manager();
+                        let data = resource_manager.get_non_fungible_data::<UnstakeData>(&id);
 
                         Runtime::current_epoch() <= data.claim_epoch
                     })
