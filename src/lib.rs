@@ -280,30 +280,30 @@ mod yield_stripping {
             };
         }
 
-        pub fn claim(&mut self) {
-            match self.claim_vault {
-                None => (),
-                Some(ref mut vault) => {
-                    let nft_ids = vault.non_fungible_local_ids(1);
-                    let nft_bucket = vault.take_non_fungibles(&nft_ids);
+        pub fn claim(&mut self, limit: u32) {
+            if let Some(ref mut vault) = self.claim_vault {
+                let claimable_nft_ids = vault
+                    .non_fungible_local_ids(limit)
+                    .into_iter()
+                    .filter(|id| {
+                        let nf_bucket = vault.take_non_fungible(&id);
 
-                    for nonfungible in nft_bucket.non_fungibles::<UnstakeData>() {
-                        let data = nonfungible.data();
-                        let non_fungible_bucket = nft_bucket.as_non_fungible();
+                        let nft = nf_bucket.non_fungible::<UnstakeData>();
+                        let data = nft.data();
 
-                        if Runtime::current_epoch() <= data.claim_epoch {
-                            let xrd_bucket: Bucket = self.lsu_validator_component.claim_xrd(
-                                non_fungible_bucket.into()
-                            );
-                            self.xrd_vault.put(xrd_bucket.as_fungible());
-                        } else {
-                            if let Some(ref mut claim_vault) = self.claim_vault {
-                                claim_vault.put(non_fungible_bucket);
-                            }
-                        }
-                    }
+                        Runtime::current_epoch() <= data.claim_epoch
+                    })
+                    .collect::<IndexSet<NonFungibleLocalId>>();
+
+                if claimable_nft_ids.len() != 0 {
+                    let claimable_bucket = vault.take_non_fungibles(&claimable_nft_ids);
+
+                    let xrd_bucket: Bucket = self.lsu_validator_component.claim_xrd(
+                        claimable_bucket.into()
+                    );
+                    self.xrd_vault.put(xrd_bucket.as_fungible());
                 }
-            };
+            }
         }
 
         /// Claims owed yield for LSU.
