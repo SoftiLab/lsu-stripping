@@ -14,6 +14,13 @@ pub struct LSU {
     lsu_amount: Decimal,
 }
 
+#[derive(ScryptoSbor, NonFungibleData)]
+pub struct UnstakeData {
+    pub name: String,
+    pub claim_epoch: Epoch,
+    pub claim_amount: Decimal,
+}
+
 #[blueprint]
 mod yield_stripping {
     struct YieldStripping {
@@ -263,13 +270,39 @@ mod yield_stripping {
 
         pub fn unstake(&mut self, lsu_bucket: Bucket) {
             let unstake_bucket = self.lsu_validator_component.unstake(lsu_bucket);
-            match &mut self.claim_vault {
+            match self.claim_vault {
                 None => {
                     self.claim_vault = Some(
                         NonFungibleVault::with_bucket(unstake_bucket.as_non_fungible())
                     );
                 }
-                Some(vault) => vault.put(unstake_bucket.as_non_fungible()),
+                Some(ref mut vault) => vault.put(unstake_bucket.as_non_fungible()),
+            };
+        }
+
+        pub fn claim(&mut self) {
+            match self.claim_vault {
+                None => (),
+                Some(ref mut vault) => {
+                    let nft_ids = vault.non_fungible_local_ids(1);
+                    let nft_bucket = vault.take_non_fungibles(&nft_ids);
+
+                    for nonfungible in nft_bucket.non_fungibles::<UnstakeData>() {
+                        let data = nonfungible.data();
+                        let non_fungible_bucket = nft_bucket.as_non_fungible();
+
+                        if Runtime::current_epoch() <= data.claim_epoch {
+                            let xrd_bucket: Bucket = self.lsu_validator_component.claim_xrd(
+                                non_fungible_bucket.into()
+                            );
+                            self.xrd_vault.put(xrd_bucket.as_fungible());
+                        } else {
+                            if let Some(ref mut claim_vault) = self.claim_vault {
+                                claim_vault.put(non_fungible_bucket);
+                            }
+                        }
+                    }
+                }
             };
         }
 
