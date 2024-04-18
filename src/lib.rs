@@ -66,8 +66,7 @@ mod yield_stripping {
                 )
                 .mint_roles(
                     mint_roles! {
-                    minter => rule!(allow_all);
-                    // minter => rule!(require(global_caller(component_address)));
+                    minter => rule!(require(global_caller(component_address)));
                     minter_updater => rule!(deny_all);
                 }
                 )
