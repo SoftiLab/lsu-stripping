@@ -8,12 +8,6 @@ pub struct YieldTokenData {
     yield_claimed: Decimal,
 }
 
-#[derive(ScryptoSbor, Clone)]
-pub struct LSU {
-    lsu_resource: ResourceAddress,
-    lsu_amount: Decimal,
-}
-
 #[derive(ScryptoSbor, NonFungibleData)]
 pub struct UnstakeData {
     pub name: String,
@@ -35,7 +29,6 @@ mod yield_stripping {
         lsu_address: ResourceAddress,
         lsu_vault: FungibleVault,
 
-        lsu: Vec<LSU>,
         claim_vault: Option<NonFungibleVault>,
     }
 
@@ -133,7 +126,6 @@ mod yield_stripping {
                 lsu_address: accepted_lsu,
                 lsu_vault: FungibleVault::new(accepted_lsu),
 
-                lsu: Vec::new(),
                 claim_vault: None,
             })
                 .instantiate()
@@ -203,11 +195,6 @@ mod yield_stripping {
 
             self.lsu_vault.put(lsu_token);
 
-            self.lsu.push(LSU {
-                lsu_resource: self.lsu_address,
-                lsu_amount,
-            });
-
             return (sxrd_bucket, yt_bucket);
         }
 
@@ -222,6 +209,8 @@ mod yield_stripping {
         /// Redeem sXRD for XRD.
         pub fn redeem_sxrd_for_xrd(&mut self, sxrd_bucket: FungibleBucket) -> FungibleBucket {
             assert_eq!(sxrd_bucket.resource_address(), self.sxrd_rm.address());
+            assert!(sxrd_bucket.amount() <= self.xrd_vault.amount(), "Not enough XRD!");
+
             let xrd_bucket = self.xrd_vault.take(sxrd_bucket.amount());
             sxrd_bucket.burn();
             xrd_bucket
@@ -237,38 +226,8 @@ mod yield_stripping {
             lsu_bucket
         }
 
-        /// Claims owed yield.
-        ///
-        /// # Arguments
-        ///
-        /// * `yt_proof`: [`NonFungibleProof`] - A non fungible proof of YT.
-        ///
-        /// # Returns
-        ///
-        /// * [`Bucket`] - A bucket of the Unstake NFT.
-        /// Note: https://docs.radixdlt.com/docs/validator#unstake-nft
-        pub fn claim_yield(&mut self, yt_proof: NonFungibleProof) -> Bucket {
-            let checked_proof = yt_proof.check(self.yt_rm.address());
-            let mut data: YieldTokenData = checked_proof.non_fungible().data();
-
-            // Calc yield owed (redemption value) based on difference of current redemption
-            // value and redemption value at start.
-            let yield_owed = self.calc_yield_owed(&data);
-
-            // Calc amount of LSU to redeem to achieve yield owed.
-            let required_lsu_for_yield_owed = self.calc_required_lsu_for_yield_owed(yield_owed);
-
-            // Burn the yield token by the amount of LSU required to redeem.
-            data.underlying_lsu_amount -= required_lsu_for_yield_owed;
-            data.yield_claimed += yield_owed;
-
-            // LSU amount decreases but redemption value is the same
-            let required_lsu_bucket = self.lsu_vault.take(required_lsu_for_yield_owed);
-
-            self.lsu_validator_component.unstake(required_lsu_bucket.into())
-        }
-
-        pub fn unstake(&mut self, lsu_bucket: Bucket) {
+        /// Unstake LSU and put in LSU Vault
+        fn unstake_lsu(&mut self, lsu_bucket: Bucket) {
             let unstake_bucket = self.lsu_validator_component.unstake(lsu_bucket);
             match self.claim_vault {
                 None => {
@@ -280,7 +239,8 @@ mod yield_stripping {
             };
         }
 
-        pub fn claim(&mut self, limit: u32) {
+        /// Claim NFTs and put in XRD Vault
+        pub fn claim_nfts(&mut self, limit: u32) {
             if let Some(ref mut vault) = self.claim_vault {
                 let claimable_nft_ids = vault
                     .non_fungible_local_ids(limit)
@@ -319,7 +279,7 @@ mod yield_stripping {
 
             // Unstake underlying lsu amount.
             let lsu_bucket = self.lsu_vault.take(data.underlying_lsu_amount).into();
-            self.unstake(lsu_bucket);
+            self.unstake_lsu(lsu_bucket);
 
             required_lsu_bucket
         }
@@ -333,7 +293,7 @@ mod yield_stripping {
 
             // Unstake underlying lsu amount.
             let lsu_bucket = self.lsu_vault.take(data.underlying_lsu_amount).into();
-            self.unstake(lsu_bucket);
+            self.unstake_lsu(lsu_bucket);
 
             let required_lsu_for_yield_owed = self.calc_required_lsu_for_yield_owed(yield_owed);
 
