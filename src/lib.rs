@@ -158,7 +158,7 @@ mod yield_stripping {
             input_lsu_address == ResourceAddress::try_from(lsu_address).unwrap()
         }
 
-        /// Tokenizes the LSU to its PT and YT.
+        /// Tokenizes the LSU to its sXRD and YT.
         ///
         /// # Arguments
         ///
@@ -166,7 +166,7 @@ mod yield_stripping {
         ///
         /// # Returns
         ///
-        /// * [`FungibleBucket`] - A fungible bucket of PT.
+        /// * [`FungibleBucket`] - A fungible bucket of sXRD.
         /// * [`NonFungibleBucket`] - A non fungible bucket of YT.
         pub fn tokenize_yield(
             &mut self,
@@ -208,6 +208,7 @@ mod yield_stripping {
         /// Redeem sXRD for XRD.
         pub fn redeem_sxrd_for_xrd(&mut self, sxrd_bucket: FungibleBucket) -> FungibleBucket {
             assert_eq!(sxrd_bucket.resource_address(), self.sxrd_rm.address());
+            // TODO: Give LSU if not enough XRD
             assert!(sxrd_bucket.amount() <= self.xrd_vault.amount(), "Not enough XRD!");
 
             let xrd_bucket = self.xrd_vault.take(sxrd_bucket.amount());
