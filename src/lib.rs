@@ -314,10 +314,8 @@ mod yield_stripping {
         ///
         /// * [`Decimal`] - The calculated earned yield from YT for the current period.
         fn calc_yield_owed(&self, data: &YieldTokenData) -> Decimal {
-            let lsu_validator_component = Self::retrieve_validator_component(
-                data.underlying_lsu_resource
-            );
-            let redemption_value = lsu_validator_component.get_redemption_value(
+
+            let redemption_value = self.lsu_validator_component.get_redemption_value(
                 data.underlying_lsu_amount
             );
 
