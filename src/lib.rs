@@ -265,20 +265,26 @@ mod yield_stripping {
         }
 
         /// Claims owed yield for LSU.
-        pub fn claim_yield_for_lsu(&mut self, yt_proof: NonFungibleProof) -> FungibleBucket {
+        pub fn claim_yield_for_lsu(&mut self, yt_proof: NonFungibleProof, lsu_amount:Option<Decimal>) -> FungibleBucket {
             let checked_proof = yt_proof.check(self.yt_rm.address());
             let mut data: YieldTokenData = checked_proof.non_fungible().data();
 
             let yield_owed = self.calc_yield_owed(&data);
 
+            let (lsu_to_unstake,yield_owed) = match lsu_amount {
+                Some(lsu_amount) => (lsu_amount,yield_owed.checked_div(data.underlying_lsu_amount).unwrap())
+                None => (data.underlying_lsu_amount,yield_owed)
+            }
+
             let required_lsu_for_yield_owed = self.calc_required_lsu_for_yield_owed(yield_owed);
-            data.underlying_lsu_amount -= required_lsu_for_yield_owed;
+
+            data.underlying_lsu_amount -= lsu_to_unstake;
             data.yield_claimed += yield_owed;
 
             let required_lsu_bucket = self.lsu_vault.take(required_lsu_for_yield_owed);
 
             // Unstake underlying lsu amount.
-            let lsu_bucket = self.lsu_vault.take(data.underlying_lsu_amount).into();
+            let lsu_bucket = self.lsu_vault.take(lsu_to_unstake).into();
             self.unstake_lsu(lsu_bucket);
 
             required_lsu_bucket
@@ -291,6 +297,7 @@ mod yield_stripping {
 
             let yield_owed = self.calc_yield_owed(&data);
 
+         
             // Unstake underlying lsu amount.
             let lsu_bucket = self.lsu_vault.take(data.underlying_lsu_amount).into();
             self.unstake_lsu(lsu_bucket);
@@ -340,13 +347,21 @@ mod yield_stripping {
         ///
         /// * [`Decimal`] - The required LSU amount to redeem yield owed.
         fn calc_required_lsu_for_yield_owed(&self, yield_owed: Decimal) -> Decimal {
-            let total_xrd_staked = self.lsu_validator_component.total_stake_xrd_amount();
-            let total_lsu_supply = self.lsu_validator_component.total_stake_unit_supply();
 
-            total_xrd_staked
-                .checked_div(total_lsu_supply)
-                .and_then(|result| yield_owed.checked_mul(result))
-                .unwrap()
+            let one_lsu_redemption_value = self.lsu_validator_component.lsu_validator_component(
+               Decimal::ONE;
+            );
+
+            yield_owed.checked_div(one_lsu_redemption_value).unwrap()
+
+
+            // let total_xrd_staked = self.lsu_validator_component.total_stake_xrd_amount();
+            // let total_lsu_supply = self.lsu_validator_component.total_stake_unit_supply();
+
+            // total_xrd_staked
+            //     .checked_div(total_lsu_supply)
+            //     .and_then(|result| yield_owed.checked_mul(result))
+            //     .unwrap()
         }
 
         /// Retrieves the `ResourceAddress` of sXRD.
@@ -354,7 +369,7 @@ mod yield_stripping {
         /// # Returns
         ///
         /// * [`ResourceAddress`] - The address of sXRD.
-        pub fn sxrd_address(&self) -> ResourceAddress {
+        fn sxrd_address(&self) -> ResourceAddress {
             self.sxrd_rm.address()
         }
 
@@ -363,7 +378,7 @@ mod yield_stripping {
         /// # Returns
         ///
         /// * [`ResourceAddress`] - The address of YT.
-        pub fn yt_address(&self) -> ResourceAddress {
+        fn yt_address(&self) -> ResourceAddress {
             self.yt_rm.address()
         }
 
@@ -372,7 +387,7 @@ mod yield_stripping {
         /// # Returns
         ///
         /// * [`ResourceAddress`] - The address of the underlying LSU.
-        pub fn underlying_resource(&self) -> ResourceAddress {
+        fn underlying_resource(&self) -> ResourceAddress {
             self.lsu_address
         }
     }
