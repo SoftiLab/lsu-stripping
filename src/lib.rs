@@ -1,6 +1,5 @@
-mod module {
-    mod staking_pool;
-}
+
+mod staking_pool;
 
 use scrypto::prelude::*;
 

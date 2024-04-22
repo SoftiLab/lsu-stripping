@@ -1,6 +1,9 @@
 // This blueprints implement a single asset staking pool based on the Liquity stability pool concept: https://www.liquity.org/blog/scaling-liquitys-stability-pool.
 // The scaling feature described in the blog post is not implemented in this blueprint, we chose to use PreciseDecimal to mitigate the scaling issue of the running product.
 
+// Ensuring 1:1 peg of sXRD to XRD peg required hard peg mechanism: sXRD need to be redeem with XRD at any time. in case the system lake XRD , sXRD will reddem for LSU and redeemed sXRD will be shared to the LSU provider.
+// The purpose of this staking pool is to allow fair distribution of sXRD to LSU contributor.
+
 use scrypto::prelude::*;
 
 /// Data structure storing the state of contributor deposit snapshot
@@ -29,7 +32,7 @@ pub struct DepositSnapshot {
 #[types(NonFungibleLocalId, u8, PreciseDecimal, DepositSnapshot, Decimal)]
 mod staking_pool {
 
-    struct StakingEngine {
+    struct StakingPool {
         /// The address of the pool
         pool_res_address: ResourceAddress,
 
@@ -68,7 +71,7 @@ mod staking_pool {
         redeemed_gains: KeyValueStore<NonFungibleLocalId, Decimal>,
     }
 
-    impl StakingEngine {
+    impl StakingPool {
         /// Instantiate a new StakingEngine
         ///
         /// # Arguments
@@ -81,8 +84,8 @@ mod staking_pool {
         pub fn instantiate(
             pool_res_address: ResourceAddress,
             distributed_res_address: ResourceAddress,
-        ) -> Owned<StakingEngine> {
-            let owned_staking_engine = Self {
+        ) -> Owned<StakingPool> {
+            Self {
                 pool_res_address,
                 current_epoch: 0,
                 running_product: PreciseDecimal::ONE,
@@ -93,9 +96,8 @@ mod staking_pool {
                 snapshots: KeyValueStore::new_with_registered_type(),
                 distributed_resources: Vault::new(distributed_res_address),
                 redeemed_gains: KeyValueStore::new_with_registered_type(),
-            };
-
-            owned_staking_engine.instantiate()
+            }
+            .instantiate()
         }
 
         /// * Pool management methods * ///
@@ -108,10 +110,7 @@ mod staking_pool {
         /// * `deposit: Bucket` - Bucket of assets added to the current pool deposits.
         ///
         pub fn deposit(&mut self, deposit: Bucket) {
-            assert!(
-                !self._is_pool_empty(),
-                "The pool is empty, Deposit not allowed"
-            );
+            assert!(!self._is_pool_empty(), "EMPTY_POOL_DEPOSIT_ERROR");
 
             self._update_running_product(deposit.amount());
 
@@ -131,10 +130,7 @@ mod staking_pool {
         pub fn withdraw(&mut self, amount: Decimal) -> Bucket {
             assert!(amount > dec!(0), "WITHDRAW_NEGATIVE_AMOUNT_ERROR");
 
-            assert!(
-                !self._is_pool_empty(),
-                "EMPTY_POOL_WITHDRAWAL_NOT_ALLOWED_ERROR"
-            );
+            assert!(!self._is_pool_empty(), "EMPTY_POOL_WITHDRAWAL_ERROR");
 
             let max_amount = self.deposits.amount().min(amount);
 
@@ -151,10 +147,7 @@ mod staking_pool {
         /// * `gain: Bucket` - The gains to distribute
         ///
         pub fn distribute(&mut self, gain: Bucket) {
-            assert!(
-                !self._is_pool_empty(),
-                "EMPTY_POOL_DISTRIBUTION_NOT_ALLOWED_ERROR"
-            );
+            assert!(!self._is_pool_empty(), "EMPTY_POOL_DISTRIBUTION_ERROR");
 
             let deposits_amount = PreciseDecimal::from(self.deposits.amount());
 
@@ -166,7 +159,7 @@ mod staking_pool {
             let mut running_sum = self
                 .running_sum
                 .get_mut(&(self.current_epoch))
-                .expect("RUNNING_SUM_GROUP_NOT_FOUND_ERROR");
+                .expect("MISSING_EPOCH_RUNNING");
 
             let gain_amount = PreciseDecimal::from(gain.amount());
 
@@ -264,34 +257,13 @@ mod staking_pool {
             gain
         }
 
-        /// Redeem and claim the compounded deposit and the gain of a contributor id.
-        ///
-        /// # Arguments
-        /// * `id` - The id of the contributor
-        ///
-        /// # Returns
-        /// * `Bucket` - The compounded deposit of the contributor.
-        ///
-        pub fn redeem_and_claim(&mut self, id: NonFungibleLocalId) -> (Bucket, Bucket) {
-            let (compounded_deposit_amount, gain_amount) = self._redeem_internal(&id);
-
-            let (compounded_deposit, gains) =
-                if self.contribution_counter - self.redemption_counter == 0 {
-                    (
-                        self.deposits.take(self.deposits.amount()),
-                        self.distributed_resources.take_all(),
-                    )
-                } else {
-                    (
-                        self.deposits.take(compounded_deposit_amount),
-                        self.distributed_resources.take(gain_amount),
-                    )
-                };
-
-            (compounded_deposit, gains)
-        }
-
         /// * Internal methods * ///
+
+        /// Evaluate if the pool is empty.
+        fn _is_pool_empty(&self) -> bool {
+            self.contribution_counter == self.redemption_counter
+                || self.deposits.amount() == dec!(0)
+        }
 
         /// Internal method implementing core logic to contribute to the pool.
         /// Handle the case where the contributor already have a contribution.
@@ -355,12 +327,6 @@ mod staking_pool {
                 self.running_product *=
                     PreciseDecimal::from(dec!(1) + (amount / self.deposits.amount()));
             }
-        }
-
-        /// Evaluate if the pool is empty.
-        fn _is_pool_empty(&self) -> bool {
-            self.contribution_counter == self.redemption_counter
-                || self.deposits.amount() == dec!(0)
         }
 
         fn _get_redeemable_value(&self, id: &NonFungibleLocalId) -> (Decimal, Decimal) {
