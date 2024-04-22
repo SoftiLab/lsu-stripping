@@ -1,3 +1,6 @@
+
+mod staking_pool;
+
 use scrypto::prelude::*;
 
 #[blueprint]
