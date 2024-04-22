@@ -1,6 +1,6 @@
-
 mod staking_pool;
 
+use self::staking_pool::staking_pool::*;
 use scrypto::prelude::*;
 
 #[derive(ScryptoSbor, NonFungibleData)]
@@ -20,6 +20,7 @@ pub struct UnstakeData {
 
 #[blueprint]
 mod yield_stripping {
+
     struct YieldStripping {
         sxrd_rm: ResourceManager,
         yt_rm: ResourceManager,
@@ -30,7 +31,8 @@ mod yield_stripping {
         yt_fee: Decimal,
         lsu_validator_component: Global<Validator>,
         lsu_address: ResourceAddress,
-        lsu_vault: FungibleVault,
+
+        lsu_pool: Owned<StakingPool>,
 
         claim_vault: Option<NonFungibleVault>,
     }
@@ -117,7 +119,7 @@ mod yield_stripping {
                 yt_fee,
                 lsu_validator_component,
                 lsu_address: accepted_lsu,
-                lsu_vault: FungibleVault::new(accepted_lsu),
+                lsu_pool: Blueprint::<StakingPool>::instantiate(accepted_lsu, sxrd_rm.address()),
 
                 claim_vault: None,
             })
@@ -188,7 +190,7 @@ mod yield_stripping {
                 })
                 .as_non_fungible();
 
-            self.lsu_vault.put(lsu_token);
+            self.lsu_pool.deposit(lsu_token.into());
 
             return (sxrd_bucket, yt_bucket);
         }
@@ -204,7 +206,7 @@ mod yield_stripping {
         /// Redeem sXRD for XRD.
         pub fn redeem_sxrd_for_xrd(&mut self, sxrd_bucket: FungibleBucket) -> FungibleBucket {
             assert_eq!(sxrd_bucket.resource_address(), self.sxrd_rm.address());
-            // TODO: Give LSU if not enough XRD
+            // TODO: Implement unstaking XRD availability checking
             assert!(
                 sxrd_bucket.amount() <= self.xrd_vault.amount(),
                 "Not enough XRD!"
@@ -217,12 +219,20 @@ mod yield_stripping {
 
         /// Redeem sXRD for LSU.
         pub fn redeem_sxrd_for_lsu(&mut self, sxrd_bucket: FungibleBucket) -> FungibleBucket {
+            assert!(
+                self.xrd_vault.amount() < sxrd_bucket.amount(),
+                "Enough XRD for direct redemption"
+            );
+
             assert_eq!(sxrd_bucket.resource_address(), self.sxrd_rm.address());
-            // Calc amount of LSU to redeem to achieve yield owed.
+
             let required_lsu_for_sxrd = self.calc_required_lsu_for_yield_owed(sxrd_bucket.amount());
-            let lsu_bucket = self.lsu_vault.take(required_lsu_for_sxrd);
-            sxrd_bucket.burn();
-            lsu_bucket
+
+            let lsu_bucket = self.lsu_pool.withdraw(required_lsu_for_sxrd);
+
+            self.lsu_pool.distribute(sxrd_bucket.into());
+
+            lsu_bucket.as_fungible()
         }
 
         /// Unstake LSU and put in LSU Vault
@@ -290,16 +300,16 @@ mod yield_stripping {
             data.underlying_lsu_amount -= lsu_to_unstake;
             data.yield_claimed += yield_owed;
 
-            let required_lsu_bucket = self.lsu_vault.take(required_lsu_for_yield_owed);
+            let required_lsu_bucket = self.lsu_pool.withdraw(required_lsu_for_yield_owed);
 
             // Unstake underlying lsu amount.
             let lsu_bucket = self
-                .lsu_vault
-                .take(lsu_to_unstake - required_lsu_for_yield_owed)
+                .lsu_pool
+                .withdraw(lsu_to_unstake - required_lsu_for_yield_owed)
                 .into();
             self.unstake_lsu(lsu_bucket);
 
-            required_lsu_bucket
+            required_lsu_bucket.as_fungible()
         }
 
         /// Claims owed yield for sXRD.
@@ -310,7 +320,7 @@ mod yield_stripping {
             let yield_owed = self.calc_yield_owed(&data);
 
             // Unstake underlying lsu amount.
-            let lsu_bucket = self.lsu_vault.take(data.underlying_lsu_amount).into();
+            let lsu_bucket = self.lsu_pool.withdraw(data.underlying_lsu_amount).into();
             self.unstake_lsu(lsu_bucket);
 
             let required_lsu_for_yield_owed = self.calc_required_lsu_for_yield_owed(yield_owed);
