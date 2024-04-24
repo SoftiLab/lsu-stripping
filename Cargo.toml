@@ -5,24 +5,24 @@ resolver = "2"
 version = "1.0.0"
 
 [dependencies]
-sbor = {git = "https://github.com/radixdlt/radixdlt-scrypto", tag = "v1.1.1"}
-scrypto = {git = "https://github.com/radixdlt/radixdlt-scrypto", tag = "v1.1.1"}
+sbor = { git = "https://github.com/radixdlt/radixdlt-scrypto", tag = "v1.1.1" }
+scrypto = { git = "https://github.com/radixdlt/radixdlt-scrypto", tag = "v1.1.1" }
 
 [dev-dependencies]
-radix-engine = {git = "https://github.com/radixdlt/radixdlt-scrypto", tag = "v1.1.1"}
-radix-engine-interface = {git = "https://github.com/radixdlt/radixdlt-scrypto", tag = "v1.1.1"}
-scrypto-test = {git = "https://github.com/radixdlt/radixdlt-scrypto", tag = "v1.1.1"}
-scrypto-unit = {git = "https://github.com/radixdlt/radixdlt-scrypto", tag = "v1.1.1"}
-transaction = {git = "https://github.com/radixdlt/radixdlt-scrypto", tag = "v1.1.1"}
-zerocoup = {path = ".", features = ["test"]}
+radix-engine = { git = "https://github.com/radixdlt/radixdlt-scrypto", tag = "v1.1.1" }
+radix-engine-interface = { git = "https://github.com/radixdlt/radixdlt-scrypto", tag = "v1.1.1" }
+scrypto-test = { git = "https://github.com/radixdlt/radixdlt-scrypto", tag = "v1.1.1" }
+scrypto-unit = { git = "https://github.com/radixdlt/radixdlt-scrypto", tag = "v1.1.1" }
+transaction = { git = "https://github.com/radixdlt/radixdlt-scrypto", tag = "v1.1.1" }
+lsu-stripper = { path = ".", features = ["test"] }
 
 [profile.release]
-codegen-units = 1 # Reduce number of codegen units to increase optimizations.
-lto = true # Enable Link Time Optimization.
-opt-level = 'z' # Optimize for size.
+codegen-units = 1      # Reduce number of codegen units to increase optimizations.
+lto = true             # Enable Link Time Optimization.
+opt-level = 'z'        # Optimize for size.
 overflow-checks = true # Panic in the case of an overflow.
-panic = 'abort' # Abort on panic.
-strip = true # Strip the symbols.
+panic = 'abort'        # Abort on panic.
+strip = true           # Strip the symbols.
 
 [features]
 default = []

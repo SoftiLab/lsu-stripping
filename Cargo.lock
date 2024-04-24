@@ -497,6 +497,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "lsu-stripper"
+version = "1.0.0"
+dependencies = [
+ "lsu-stripper",
+ "radix-engine",
+ "radix-engine-interface",
+ "sbor",
+ "scrypto",
+ "scrypto-test",
+ "scrypto-unit",
+ "transaction",
+]
+
+[[package]]
 name = "memchr"
 version = "2.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1710,20 +1724,6 @@ name = "windows_x86_64_msvc"
 version = "0.52.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32b752e52a2da0ddfbdbcc6fceadfeede4c939ed16d13e648833a61dfb611ed8"
-
-[[package]]
-name = "zerocoup"
-version = "1.0.0"
-dependencies = [
- "radix-engine",
- "radix-engine-interface",
- "sbor",
- "scrypto",
- "scrypto-test",
- "scrypto-unit",
- "transaction",
- "zerocoup",
-]
 
 [[package]]
 name = "zeroize"
