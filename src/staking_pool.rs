@@ -102,21 +102,6 @@ mod staking_pool {
 
         /// * Pool management methods * ///
 
-        /// Deposit assets in the pool
-        /// This method is use to "inflate" the pool with compound effect on future rewards.
-        /// The method call update the running product of the pool.
-        ///
-        /// # Arguments
-        /// * `deposit: Bucket` - Bucket of assets added to the current pool deposits.
-        ///
-        pub fn deposit(&mut self, deposit: Bucket) {
-            assert!(!self._is_pool_empty(), "EMPTY_POOL_DEPOSIT_ERROR");
-
-            self._update_running_product(deposit.amount());
-
-            self.deposits.put(deposit);
-        }
-
         /// Withdraw assets from the pool
         /// This method is use to "deflate" the pool with compound effect on future rewards.
         /// The method call update the running product of the pool.
@@ -132,11 +117,9 @@ mod staking_pool {
 
             assert!(!self._is_pool_empty(), "EMPTY_POOL_WITHDRAWAL_ERROR");
 
-            let max_amount = self.deposits.amount().min(amount);
+            self._update_running_product(-amount);
 
-            self._update_running_product(-max_amount);
-
-            self.deposits.take(max_amount)
+            self.deposits.take(amount)
         }
 
         /// Distribute gains to the contributors

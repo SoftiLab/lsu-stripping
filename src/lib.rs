@@ -190,7 +190,11 @@ mod yield_stripping {
                 })
                 .as_non_fungible();
 
-            self.lsu_pool.deposit(lsu_token.into());
+            let nft: NonFungible<YieldTokenData> = yt_bucket.non_fungible();
+
+            let yt_id = nft.local_id();
+
+            self.lsu_pool.contribute(yt_id.clone(), lsu_token.into());
 
             return (sxrd_bucket, yt_bucket);
         }
