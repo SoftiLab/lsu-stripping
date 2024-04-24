@@ -20,7 +20,6 @@ pub struct UnstakeData {
 
 #[blueprint]
 mod yield_stripping {
-
     struct YieldStripping {
         sxrd_rm: ResourceManager,
         yt_rm: ResourceManager,
@@ -42,7 +41,7 @@ mod yield_stripping {
             accepted_lsu: ResourceAddress,
 
             stripping_fee: Decimal,
-            yt_fee: Decimal,
+            yt_fee: Decimal
         ) -> Global<YieldStripping> {
             assert!(
                 Decimal::ZERO <= stripping_fee && stripping_fee <= Decimal::ONE,
@@ -53,8 +52,9 @@ mod yield_stripping {
                 "Yield token fee must be between zero and one!"
             );
 
-            let (address_reservation, component_address) =
-                Runtime::allocate_component_address(YieldStripping::blueprint_id());
+            let (address_reservation, component_address) = Runtime::allocate_component_address(
+                YieldStripping::blueprint_id()
+            );
 
             // sXRD
             let sxrd_rm: ResourceManager = ResourceBuilder::new_fungible(OwnerRole::None)
@@ -84,28 +84,36 @@ mod yield_stripping {
 
             // YT
             let yt_rm: ResourceManager = ResourceBuilder::new_ruid_non_fungible::<YieldTokenData>(
-                OwnerRole::None,
+                OwnerRole::None
             )
-            .metadata(metadata! {
+                .metadata(
+                    metadata! {
                 init {
                     "name" => "Yield Receipt", locked;
                     "symbol" => "YT", locked;
                     "yield_stripping_component" => GlobalAddress::from(component_address), locked;
                 }
-            })
-            .mint_roles(mint_roles! {
+            }
+                )
+                .mint_roles(
+                    mint_roles! {
                 minter => rule!(require(global_caller(component_address)));
                 minter_updater => rule!(deny_all);
-            })
-            .burn_roles(burn_roles! {
+            }
+                )
+                .burn_roles(
+                    burn_roles! {
                 burner => rule!(allow_all);
                 burner_updater => rule!(deny_all);
-            })
-            .non_fungible_data_update_roles(non_fungible_data_update_roles! {
+            }
+                )
+                .non_fungible_data_update_roles(
+                    non_fungible_data_update_roles! {
                 non_fungible_data_updater => rule!(require(global_caller(component_address)));
                 non_fungible_data_updater_updater => rule!(deny_all);
-            })
-            .create_with_no_initial_supply();
+            }
+                )
+                .create_with_no_initial_supply();
 
             let lsu_validator_component = Self::retrieve_validator_component(accepted_lsu);
             assert_eq!(Self::validate_lsu(accepted_lsu), true, "Not an LSU!");
@@ -123,10 +131,10 @@ mod yield_stripping {
 
                 claim_vault: None,
             })
-            .instantiate()
-            .prepare_to_globalize(OwnerRole::None)
-            .with_address(address_reservation)
-            .globalize()
+                .instantiate()
+                .prepare_to_globalize(OwnerRole::None)
+                .with_address(address_reservation)
+                .globalize()
         }
 
         /// Retrieve validator component.
@@ -166,22 +174,20 @@ mod yield_stripping {
         /// * [`NonFungibleBucket`] - A non fungible bucket of YT.
         pub fn tokenize_yield(
             &mut self,
-            lsu_token: FungibleBucket,
+            lsu_token: FungibleBucket
         ) -> (FungibleBucket, NonFungibleBucket) {
             assert_eq!(lsu_token.resource_address(), self.lsu_address);
 
             let lsu_amount = lsu_token.amount();
-            let redemption_value = self
-                .lsu_validator_component
-                .get_redemption_value(lsu_token.amount());
+            let redemption_value = self.lsu_validator_component.get_redemption_value(
+                lsu_token.amount()
+            );
 
-            let mut sxrd_bucket = self.sxrd_rm.mint(lsu_amount).as_fungible();
+            let mut sxrd_bucket = self.sxrd_rm.mint(redemption_value).as_fungible();
 
-            self.fee_vault
-                .put(sxrd_bucket.take(lsu_amount * self.stripping_fee));
+            self.fee_vault.put(sxrd_bucket.take(lsu_amount * self.stripping_fee));
 
-            let yt_bucket = self
-                .yt_rm
+            let yt_bucket = self.yt_rm
                 .mint_ruid_non_fungible(YieldTokenData {
                     underlying_lsu_resource: self.lsu_address,
                     underlying_lsu_amount: lsu_amount,
@@ -210,15 +216,15 @@ mod yield_stripping {
         /// Redeem sXRD for XRD.
         pub fn redeem_sxrd_for_xrd(&mut self, sxrd_bucket: FungibleBucket) -> FungibleBucket {
             assert_eq!(sxrd_bucket.resource_address(), self.sxrd_rm.address());
-            // TODO: Implement unstaking XRD availability checking
-            assert!(
-                sxrd_bucket.amount() <= self.xrd_vault.amount(),
-                "Not enough XRD!"
-            );
 
-            let xrd_bucket = self.xrd_vault.take(sxrd_bucket.amount());
-            sxrd_bucket.burn();
-            xrd_bucket
+            if sxrd_bucket.amount() <= self.xrd_vault.amount() {
+                let xrd_bucket = self.xrd_vault.take(sxrd_bucket.amount());
+                sxrd_bucket.burn();
+                xrd_bucket
+            } else {
+                // TODO: Replace amount to take from LSU
+                todo!()
+            }
         }
 
         /// Redeem sXRD for LSU.
@@ -244,9 +250,9 @@ mod yield_stripping {
             let unstake_bucket = self.lsu_validator_component.unstake(lsu_bucket);
             match self.claim_vault {
                 None => {
-                    self.claim_vault = Some(NonFungibleVault::with_bucket(
-                        unstake_bucket.as_non_fungible(),
-                    ));
+                    self.claim_vault = Some(
+                        NonFungibleVault::with_bucket(unstake_bucket.as_non_fungible())
+                    );
                 }
                 Some(ref mut vault) => vault.put(unstake_bucket.as_non_fungible()),
             };
@@ -269,9 +275,9 @@ mod yield_stripping {
                 if claimable_nft_ids.len() != 0 {
                     let claimable_bucket = vault.take_non_fungibles(&claimable_nft_ids);
 
-                    let xrd_bucket: Bucket = self
-                        .lsu_validator_component
-                        .claim_xrd(claimable_bucket.into());
+                    let xrd_bucket: Bucket = self.lsu_validator_component.claim_xrd(
+                        claimable_bucket.into()
+                    );
                     self.xrd_vault.put(xrd_bucket.as_fungible());
                 }
             }
@@ -281,7 +287,7 @@ mod yield_stripping {
         pub fn claim_yield_for_lsu(
             &mut self,
             yt_proof: NonFungibleProof,
-            lsu_amount: Option<Decimal>,
+            lsu_amount: Option<Decimal>
         ) -> FungibleBucket {
             let checked_proof = yt_proof.check(self.yt_rm.address());
             let mut data: YieldTokenData = checked_proof.non_fungible().data();
@@ -291,10 +297,7 @@ mod yield_stripping {
             let (lsu_to_unstake, yield_owed) = match lsu_amount {
                 Some(lsu_amount) => {
                     assert!(lsu_amount <= data.underlying_lsu_amount);
-                    (
-                        lsu_amount,
-                        yield_owed.checked_div(data.underlying_lsu_amount).unwrap(),
-                    )
+                    (lsu_amount, yield_owed.checked_div(data.underlying_lsu_amount).unwrap())
                 }
                 None => (data.underlying_lsu_amount, yield_owed),
             };
@@ -307,8 +310,7 @@ mod yield_stripping {
             let required_lsu_bucket = self.lsu_pool.withdraw(required_lsu_for_yield_owed);
 
             // Unstake underlying lsu amount.
-            let lsu_bucket = self
-                .lsu_pool
+            let lsu_bucket = self.lsu_pool
                 .withdraw(lsu_to_unstake - required_lsu_for_yield_owed)
                 .into();
             self.unstake_lsu(lsu_bucket);
@@ -332,9 +334,7 @@ mod yield_stripping {
             data.underlying_lsu_amount -= required_lsu_for_yield_owed;
             data.yield_claimed += yield_owed;
 
-            let sxrd_value = self
-                .lsu_validator_component
-                .get_redemption_value(yield_owed);
+            let sxrd_value = self.lsu_validator_component.get_redemption_value(yield_owed);
             self.sxrd_rm.mint(sxrd_value).as_fungible()
         }
 
@@ -348,9 +348,9 @@ mod yield_stripping {
         ///
         /// * [`Decimal`] - The calculated earned yield from YT for the current period.
         fn calc_yield_owed(&self, data: &YieldTokenData) -> Decimal {
-            let redemption_value = self
-                .lsu_validator_component
-                .get_redemption_value(data.underlying_lsu_amount);
+            let redemption_value = self.lsu_validator_component.get_redemption_value(
+                data.underlying_lsu_amount
+            );
 
             info!("Redemption Value: {:?}", redemption_value);
 
@@ -358,14 +358,9 @@ mod yield_stripping {
 
             info!("Redemption Value: {:?}", redemption_value_at_start);
 
-            assert!(
-                redemption_value > redemption_value_at_start,
-                "No rewards earned yet."
-            );
+            assert!(redemption_value > redemption_value_at_start, "No rewards earned yet.");
 
-            redemption_value
-                .checked_sub(redemption_value_at_start)
-                .unwrap()
+            redemption_value.checked_sub(redemption_value_at_start).unwrap()
         }
 
         /// Calculates the required LSU to redeem yield earned for the period.
@@ -378,9 +373,9 @@ mod yield_stripping {
         ///
         /// * [`Decimal`] - The required LSU amount to redeem yield owed.
         fn calc_required_lsu_for_yield_owed(&self, yield_owed: Decimal) -> Decimal {
-            let one_lsu_redemption_value = self
-                .lsu_validator_component
-                .get_redemption_value(Decimal::ONE);
+            let one_lsu_redemption_value = self.lsu_validator_component.get_redemption_value(
+                Decimal::ONE
+            );
 
             yield_owed.checked_div(one_lsu_redemption_value).unwrap()
 
