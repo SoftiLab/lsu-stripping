@@ -235,9 +235,9 @@ mod yield_stripping {
             let required_lsu_for_sxrd: Decimal =
                 self.calc_required_lsu_for_yield_owed(sxrd_bucket.amount());
 
-            let lsu_bucket = self.lsu_pool.withdraw(required_lsu_for_sxrd);
-
             //TODO: Add penalty for redeeming sXRD for LSU
+
+            let lsu_bucket = self.lsu_pool.withdraw(required_lsu_for_sxrd);
 
             self.lsu_pool.distribute(sxrd_bucket.into());
 
@@ -283,7 +283,10 @@ mod yield_stripping {
         }
 
         /// Claims owed yield for LSU.
-        pub fn claim_yield_for_lsu(&mut self, yt_proof: NonFungibleProof) -> FungibleBucket {
+        pub fn claim_yield_for_lsu(
+            &mut self,
+            yt_proof: NonFungibleProof,
+        ) -> (FungibleBucket, FungibleBucket) {
             let checked_proof = yt_proof.check(self.yt_rm.address());
 
             let nft: NonFungible<YieldTokenData> = checked_proof.non_fungible();
@@ -291,7 +294,7 @@ mod yield_stripping {
             let yt_id = nft.local_id();
 
             // Withdraw underlying lsu to unstake
-            let mut lsu_bucket = self.lsu_pool.redeem(yt_id.clone(), None);
+            let (mut lsu_bucket, sxrd_bucket) = self.lsu_pool.redeem(yt_id.clone());
 
             // Calculate LSU amount corresponding to yield owned
             let yield_owed = self.calc_yield_owed(&data);
@@ -302,23 +305,28 @@ mod yield_stripping {
             // Unstake underlying lsu amount.
             self.unstake_lsu(lsu_bucket);
 
-            required_lsu_bucket.as_fungible()
+            (required_lsu_bucket.as_fungible(), sxrd_bucket.as_fungible())
         }
 
         /// Claims owed yield for sXRD.
         pub fn claim_yield_for_sxrd(&mut self, yt_proof: NonFungibleProof) -> FungibleBucket {
             let checked_proof = yt_proof.check(self.yt_rm.address());
-            let data: YieldTokenData = checked_proof.non_fungible().data();
+
+            let nft: NonFungible<YieldTokenData> = checked_proof.non_fungible();
+            let data: YieldTokenData = nft.data();
+            let yt_id = nft.local_id();
 
             // Calculate XRD amount corresponding to yield owned
             let sxrd_value = self.calc_yield_owed(&data);
 
             // Unstake underlying lsu amount.
-            let lsu_bucket = self.lsu_pool.withdraw(data.underlying_lsu_amount).into();
+            let (lsu_bucket, mut sxrd_bucket) = self.lsu_pool.redeem(yt_id.clone());
             self.unstake_lsu(lsu_bucket);
 
             // Mint sXRD amount corresponding to yield owned
-            self.sxrd_rm.mint(sxrd_value).as_fungible()
+            sxrd_bucket.put(self.sxrd_rm.mint(sxrd_value));
+
+            sxrd_bucket.as_fungible()
         }
 
         /// Calculates earned yield of YT.
