@@ -1,4 +1,4 @@
-mod staking_pool;
+pub mod staking_pool;
 
 use self::staking_pool::staking_pool::*;
 use scrypto::prelude::*;

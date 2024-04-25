@@ -29,9 +29,9 @@ pub struct DepositSnapshot {
 
 #[blueprint]
 #[types(NonFungibleLocalId, u8, PreciseDecimal, DepositSnapshot, Decimal)]
-mod staking_pool {
+pub mod staking_pool {
 
-    struct StakingPool {
+    pub struct StakingPool {
         /// The address of the pool
         pool_res_address: ResourceAddress,
 
@@ -110,7 +110,15 @@ mod staking_pool {
 
             assert!(!self._is_pool_empty());
 
-            self._update_running_product(-amount);
+            let deposit_amount = self.deposits.amount();
+
+            if deposit_amount == amount {
+                self.current_epoch += 1;
+                self.running_product = PreciseDecimal::ONE;
+            } else {
+                self.running_product *=
+                    PreciseDecimal::from(dec!(1) - (amount / self.deposits.amount()));
+            }
 
             self.deposits.take(amount)
         }
@@ -123,7 +131,7 @@ mod staking_pool {
         /// * `gain: Bucket` - The gains to distribute
         ///
         pub fn distribute(&mut self, gain: Bucket) {
-            assert!(!self._is_pool_empty());
+            assert!(!self._is_pool_empty(), "SNAPSHOT_ALREADY_TAKEN");
 
             let deposits_amount = PreciseDecimal::from(self.deposits.amount());
 
@@ -189,24 +197,22 @@ mod staking_pool {
                 .remove(&id)
                 .expect("SNAPSHOT_NOT_FOUND_ERROR");
 
-            let epoch_running_sum = match self.running_sum.get(&(snapshot.epoch)) {
-                Some(running_sum) => *running_sum,
-                None => PreciseDecimal::ZERO,
-            };
-
             // Calculate the compounded deposit amount using the processed running product at the epoch of the snapshot.
             let compounded_deposit_amount = if snapshot.epoch == self.current_epoch {
-                PreciseDecimal::from(snapshot.deposit_amount) / snapshot.running_product
+                PreciseDecimal::from(snapshot.deposit_amount)
+                    * (self.running_product / snapshot.running_product)
             } else {
                 PreciseDecimal::ZERO
             };
 
             // calculate the gain amount using the processed running sum at the epoch of the snapshot.
+            let epoch_running_sum = match self.running_sum.get(&(snapshot.epoch)) {
+                Some(running_sum) => *running_sum,
+                None => PreciseDecimal::ZERO,
+            };
             let mut gain_amount = PreciseDecimal::from(snapshot.deposit_amount);
             gain_amount = (gain_amount / snapshot.running_product)
                 * (epoch_running_sum - snapshot.running_sum);
-
-            self.redemption_counter += 1;
 
             let compounded_deposit_amount = compounded_deposit_amount
                 .checked_truncate(RoundingMode::ToNearestMidpointToEven)
@@ -215,6 +221,8 @@ mod staking_pool {
             let gain_amount = gain_amount
                 .checked_truncate(RoundingMode::ToNearestMidpointToEven)
                 .unwrap();
+
+            self.redemption_counter += 1;
 
             if self.contribution_counter - self.redemption_counter == 0 {
                 (
@@ -235,20 +243,6 @@ mod staking_pool {
         fn _is_pool_empty(&self) -> bool {
             self.contribution_counter == self.redemption_counter
                 || self.deposits.amount() == dec!(0)
-        }
-
-        /// Internal method implementing core logic to update the running product of the pool.
-        /// The method is called each time a deposit or a withdrawal is made.
-        fn _update_running_product(&mut self, amount: Decimal) {
-            let total_deposit_amount = self.deposits.amount();
-
-            if total_deposit_amount == -amount || total_deposit_amount == dec!(0) {
-                self.current_epoch += 1;
-                self.running_product = PreciseDecimal::ONE;
-            } else {
-                self.running_product *=
-                    PreciseDecimal::from(dec!(1) + (amount / self.deposits.amount()));
-            }
         }
     }
 }
