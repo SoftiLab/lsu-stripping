@@ -1,6 +1,6 @@
+pub mod staking_pool;
 
-mod staking_pool;
-
+use self::staking_pool::staking_pool::*;
 use scrypto::prelude::*;
 
 #[derive(ScryptoSbor, NonFungibleData)]
@@ -30,7 +30,8 @@ mod yield_stripping {
         yt_fee: Decimal,
         lsu_validator_component: Global<Validator>,
         lsu_address: ResourceAddress,
-        lsu_vault: FungibleVault,
+
+        lsu_pool: Owned<StakingPool>,
 
         claim_vault: Option<NonFungibleVault>,
     }
@@ -117,7 +118,7 @@ mod yield_stripping {
                 yt_fee,
                 lsu_validator_component,
                 lsu_address: accepted_lsu,
-                lsu_vault: FungibleVault::new(accepted_lsu),
+                lsu_pool: Blueprint::<StakingPool>::instantiate(accepted_lsu, sxrd_rm.address()),
 
                 claim_vault: None,
             })
@@ -173,7 +174,7 @@ mod yield_stripping {
                 .lsu_validator_component
                 .get_redemption_value(lsu_token.amount());
 
-            let mut sxrd_bucket = self.sxrd_rm.mint(lsu_amount).as_fungible();
+            let mut sxrd_bucket = self.sxrd_rm.mint(redemption_value).as_fungible();
 
             self.fee_vault
                 .put(sxrd_bucket.take(lsu_amount * self.stripping_fee));
@@ -188,7 +189,11 @@ mod yield_stripping {
                 })
                 .as_non_fungible();
 
-            self.lsu_vault.put(lsu_token);
+            let nft: NonFungible<YieldTokenData> = yt_bucket.non_fungible();
+
+            let yt_id = nft.local_id();
+
+            self.lsu_pool.contribute(yt_id.clone(), lsu_token.into());
 
             return (sxrd_bucket, yt_bucket);
         }
@@ -201,28 +206,42 @@ mod yield_stripping {
             self.sxrd_rm.mint(xrd_amount).as_fungible()
         }
 
-        /// Redeem sXRD for XRD.
-        pub fn redeem_sxrd_for_xrd(&mut self, sxrd_bucket: FungibleBucket) -> FungibleBucket {
+        /// Redeem sXRD
+        pub fn redeem_sxrd(
+            &mut self,
+            sxrd_bucket: FungibleBucket,
+            only_xrd: bool,
+        ) -> FungibleBucket {
             assert_eq!(sxrd_bucket.resource_address(), self.sxrd_rm.address());
-            // TODO: Give LSU if not enough XRD
-            assert!(
-                sxrd_bucket.amount() <= self.xrd_vault.amount(),
-                "Not enough XRD!"
-            );
 
-            let xrd_bucket = self.xrd_vault.take(sxrd_bucket.amount());
-            sxrd_bucket.burn();
-            xrd_bucket
+            if sxrd_bucket.amount() <= self.xrd_vault.amount() {
+                // Redeem sXRD for XRD
+
+                let xrd_bucket = self.xrd_vault.take(sxrd_bucket.amount());
+                sxrd_bucket.burn();
+                xrd_bucket
+            } else {
+                assert!(!only_xrd, "Not enough XRD!");
+
+                // Redeem sXRD for LSU
+                self.redeem_sxrd_for_lsu(sxrd_bucket)
+            }
         }
 
         /// Redeem sXRD for LSU.
-        pub fn redeem_sxrd_for_lsu(&mut self, sxrd_bucket: FungibleBucket) -> FungibleBucket {
+        fn redeem_sxrd_for_lsu(&mut self, sxrd_bucket: FungibleBucket) -> FungibleBucket {
             assert_eq!(sxrd_bucket.resource_address(), self.sxrd_rm.address());
-            // Calc amount of LSU to redeem to achieve yield owed.
-            let required_lsu_for_sxrd = self.calc_required_lsu_for_yield_owed(sxrd_bucket.amount());
-            let lsu_bucket = self.lsu_vault.take(required_lsu_for_sxrd);
-            sxrd_bucket.burn();
-            lsu_bucket
+
+            let required_lsu_for_sxrd: Decimal =
+                self.calc_required_lsu_for_yield_owed(sxrd_bucket.amount());
+
+            //TODO: Add penalty for redeeming sXRD for LSU
+
+            let lsu_bucket = self.lsu_pool.withdraw(required_lsu_for_sxrd);
+
+            self.lsu_pool.distribute(sxrd_bucket.into());
+
+            lsu_bucket.as_fungible()
         }
 
         /// Unstake LSU and put in LSU Vault
@@ -267,61 +286,47 @@ mod yield_stripping {
         pub fn claim_yield_for_lsu(
             &mut self,
             yt_proof: NonFungibleProof,
-            lsu_amount: Option<Decimal>,
-        ) -> FungibleBucket {
+        ) -> (FungibleBucket, FungibleBucket) {
             let checked_proof = yt_proof.check(self.yt_rm.address());
-            let mut data: YieldTokenData = checked_proof.non_fungible().data();
 
+            let nft: NonFungible<YieldTokenData> = checked_proof.non_fungible();
+            let data: YieldTokenData = nft.data();
+            let yt_id = nft.local_id();
+
+            // Withdraw underlying lsu to unstake
+            let (mut lsu_bucket, sxrd_bucket) = self.lsu_pool.redeem(yt_id.clone());
+
+            // Calculate LSU amount corresponding to yield owned
             let yield_owed = self.calc_yield_owed(&data);
-
-            let (lsu_to_unstake, yield_owed) = match lsu_amount {
-                Some(lsu_amount) => {
-                    assert!(lsu_amount <= data.underlying_lsu_amount);
-                    (
-                        lsu_amount,
-                        yield_owed.checked_div(data.underlying_lsu_amount).unwrap(),
-                    )
-                }
-                None => (data.underlying_lsu_amount, yield_owed),
-            };
-
             let required_lsu_for_yield_owed = self.calc_required_lsu_for_yield_owed(yield_owed);
 
-            data.underlying_lsu_amount -= lsu_to_unstake;
-            data.yield_claimed += yield_owed;
-
-            let required_lsu_bucket = self.lsu_vault.take(required_lsu_for_yield_owed);
+            let required_lsu_bucket = lsu_bucket.take(required_lsu_for_yield_owed);
 
             // Unstake underlying lsu amount.
-            let lsu_bucket = self
-                .lsu_vault
-                .take(lsu_to_unstake - required_lsu_for_yield_owed)
-                .into();
             self.unstake_lsu(lsu_bucket);
 
-            required_lsu_bucket
+            (required_lsu_bucket.as_fungible(), sxrd_bucket.as_fungible())
         }
 
         /// Claims owed yield for sXRD.
         pub fn claim_yield_for_sxrd(&mut self, yt_proof: NonFungibleProof) -> FungibleBucket {
             let checked_proof = yt_proof.check(self.yt_rm.address());
-            let mut data: YieldTokenData = checked_proof.non_fungible().data();
 
-            let yield_owed = self.calc_yield_owed(&data);
+            let nft: NonFungible<YieldTokenData> = checked_proof.non_fungible();
+            let data: YieldTokenData = nft.data();
+            let yt_id = nft.local_id();
+
+            // Calculate XRD amount corresponding to yield owned
+            let sxrd_value = self.calc_yield_owed(&data);
 
             // Unstake underlying lsu amount.
-            let lsu_bucket = self.lsu_vault.take(data.underlying_lsu_amount).into();
+            let (lsu_bucket, mut sxrd_bucket) = self.lsu_pool.redeem(yt_id.clone());
             self.unstake_lsu(lsu_bucket);
 
-            let required_lsu_for_yield_owed = self.calc_required_lsu_for_yield_owed(yield_owed);
+            // Mint sXRD amount corresponding to yield owned
+            sxrd_bucket.put(self.sxrd_rm.mint(sxrd_value));
 
-            data.underlying_lsu_amount -= required_lsu_for_yield_owed;
-            data.yield_claimed += yield_owed;
-
-            let sxrd_value = self
-                .lsu_validator_component
-                .get_redemption_value(yield_owed);
-            self.sxrd_rm.mint(sxrd_value).as_fungible()
+            sxrd_bucket.as_fungible()
         }
 
         /// Calculates earned yield of YT.
@@ -384,7 +389,7 @@ mod yield_stripping {
         /// # Returns
         ///
         /// * [`ResourceAddress`] - The address of sXRD.
-        fn sxrd_address(&self) -> ResourceAddress {
+        pub fn sxrd_address(&self) -> ResourceAddress {
             self.sxrd_rm.address()
         }
 
@@ -393,7 +398,7 @@ mod yield_stripping {
         /// # Returns
         ///
         /// * [`ResourceAddress`] - The address of YT.
-        fn yt_address(&self) -> ResourceAddress {
+        pub fn yt_address(&self) -> ResourceAddress {
             self.yt_rm.address()
         }
 
@@ -402,7 +407,7 @@ mod yield_stripping {
         /// # Returns
         ///
         /// * [`ResourceAddress`] - The address of the underlying LSU.
-        fn underlying_resource(&self) -> ResourceAddress {
+        pub fn underlying_resource(&self) -> ResourceAddress {
             self.lsu_address
         }
     }
