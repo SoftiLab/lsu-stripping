@@ -34,12 +34,13 @@ mod yield_stripping {
         lsu_pool: Owned<StakingPool>,
 
         claim_vault: Option<NonFungibleVault>,
+        claim_limit: u32,
     }
 
     impl YieldStripping {
         pub fn instantiate_yield_stripping(
             accepted_lsu: ResourceAddress,
-
+            claim_limit: u32,
             stripping_fee: Decimal,
             yt_fee: Decimal
         ) -> Global<YieldStripping> {
@@ -130,6 +131,7 @@ mod yield_stripping {
                 lsu_pool: Blueprint::<StakingPool>::instantiate(accepted_lsu, sxrd_rm.address()),
 
                 claim_vault: None,
+                claim_limit,
             })
                 .instantiate()
                 .prepare_to_globalize(OwnerRole::None)
@@ -221,9 +223,15 @@ mod yield_stripping {
         ) -> FungibleBucket {
             assert_eq!(sxrd_bucket.resource_address(), self.sxrd_rm.address());
 
+            // Case we don't have enough XRD so we check if we can claim the unstake NFTs.
+            while self.xrd_vault.amount() < sxrd_bucket.amount() {
+                if self.claim_nfts(self.claim_limit) == Decimal::ZERO {
+                    break;
+                }
+            }
+
             if sxrd_bucket.amount() <= self.xrd_vault.amount() {
                 // Redeem sXRD for XRD
-
                 let xrd_bucket = self.xrd_vault.take(sxrd_bucket.amount());
                 sxrd_bucket.burn();
                 xrd_bucket
@@ -266,7 +274,7 @@ mod yield_stripping {
         }
 
         /// Claim NFTs and put in XRD Vault
-        pub fn claim_nfts(&mut self, limit: u32) {
+        pub fn claim_nfts(&mut self, limit: u32) -> Decimal {
             if let Some(ref mut vault) = self.claim_vault {
                 let claimable_nft_ids = vault
                     .non_fungible_local_ids(limit)
@@ -285,9 +293,12 @@ mod yield_stripping {
                     let xrd_bucket: Bucket = self.lsu_validator_component.claim_xrd(
                         claimable_bucket.into()
                     );
+                    let claimed_amount = xrd_bucket.amount();
                     self.xrd_vault.put(xrd_bucket.as_fungible());
+                    return claimed_amount;
                 }
             }
+            return Decimal::ZERO;
         }
 
         /// Claims owed yield for LSU.
