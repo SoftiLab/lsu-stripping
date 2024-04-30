@@ -174,13 +174,13 @@ mod yield_stripping {
         /// * [`NonFungibleBucket`] - A non fungible bucket of YT.
         pub fn tokenize_yield(
             &mut self,
-            lsu_token: FungibleBucket
+            lsu_bucket: FungibleBucket
         ) -> (FungibleBucket, NonFungibleBucket) {
-            assert_eq!(lsu_token.resource_address(), self.lsu_address);
+            assert_eq!(lsu_bucket.resource_address(), self.lsu_address);
 
-            let lsu_amount = lsu_token.amount();
+            let lsu_amount = lsu_bucket.amount();
             let redemption_value = self.lsu_validator_component.get_redemption_value(
-                lsu_token.amount()
+                lsu_bucket.amount()
             );
 
             let mut sxrd_bucket = self.sxrd_rm.mint(redemption_value).as_fungible();
@@ -200,7 +200,7 @@ mod yield_stripping {
 
             let yt_id = nft.local_id();
 
-            self.lsu_pool.contribute(yt_id.clone(), lsu_token.into());
+            self.lsu_pool.contribute(yt_id.clone(), lsu_bucket.into());
 
             return (sxrd_bucket, yt_bucket);
         }
