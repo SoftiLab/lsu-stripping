@@ -185,7 +185,7 @@ mod yield_stripping {
 
             let mut sxrd_bucket = self.sxrd_rm.mint(redemption_value).as_fungible();
 
-            self.fee_vault.put(sxrd_bucket.take(lsu_amount * self.stripping_fee));
+            self.fee_vault.put(sxrd_bucket.take(redemption_value * self.stripping_fee));
 
             let yt_bucket = self.yt_rm
                 .mint_ruid_non_fungible(YieldTokenData {
