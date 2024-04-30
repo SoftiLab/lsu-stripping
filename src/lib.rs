@@ -26,6 +26,7 @@ mod yield_stripping {
 
         xrd_vault: FungibleVault,
         fee_vault: FungibleVault,
+        redeem_fee: Decimal,
         stripping_fee: Decimal,
         yt_fee: Decimal,
         lsu_validator_component: Global<Validator>,
@@ -41,6 +42,7 @@ mod yield_stripping {
         pub fn instantiate_yield_stripping(
             accepted_lsu: ResourceAddress,
             claim_limit: u32,
+            redeem_fee: Decimal,
             stripping_fee: Decimal,
             yt_fee: Decimal
         ) -> Global<YieldStripping> {
@@ -124,6 +126,7 @@ mod yield_stripping {
                 yt_rm,
                 xrd_vault: FungibleVault::new(XRD),
                 fee_vault: FungibleVault::new(sxrd_rm.address()),
+                redeem_fee,
                 stripping_fee,
                 yt_fee,
                 lsu_validator_component,
@@ -244,14 +247,17 @@ mod yield_stripping {
         }
 
         /// Redeem sXRD for LSU.
-        fn redeem_sxrd_for_lsu(&mut self, sxrd_bucket: FungibleBucket) -> FungibleBucket {
+        fn redeem_sxrd_for_lsu(&mut self, mut sxrd_bucket: FungibleBucket) -> FungibleBucket {
             assert_eq!(sxrd_bucket.resource_address(), self.sxrd_rm.address());
+
+            // Take redeem fee.
+            self.fee_vault.put(
+                sxrd_bucket.take(sxrd_bucket.amount() * self.redeem_fee).as_fungible()
+            );
 
             let required_lsu_for_sxrd: Decimal = self.calc_required_lsu_for_yield_owed(
                 sxrd_bucket.amount()
             );
-
-            //TODO: Add penalty for redeeming sXRD for LSU
 
             let lsu_bucket = self.lsu_pool.withdraw(required_lsu_for_sxrd);
 
