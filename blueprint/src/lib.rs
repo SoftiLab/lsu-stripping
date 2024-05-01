@@ -386,6 +386,27 @@ mod yield_tokenizer {
 
         // * Private methods *//
 
+        /// Redeem sXRD for LSU.
+        fn redeem_sxrd_for_lsu(&mut self, mut sxrd_bucket: FungibleBucket) -> FungibleBucket {
+            assert_eq!(sxrd_bucket.resource_address(), self.sxrd_rm.address());
+
+            // Pay a penalty to YT owners as we will be redeeming sXRD for LSU
+            let sxrd_penalty =
+                sxrd_bucket.take(sxrd_bucket.amount() * self.sxrd_redeem_penalty_rate);
+            self.lsu_pool.distribute(sxrd_penalty);
+
+            // Get LSU with XRD redemption value equal remaining sXRD amount
+            let required_lsu_for_sxrd: Decimal =
+                self.calc_required_lsu_for_yield_owed(sxrd_bucket.amount());
+            let lsu_bucket = self.lsu_pool.withdraw(required_lsu_for_sxrd);
+
+            // Burn sXRD : sXRD burnt value = XRD value leaving the component
+            self.sxrd_rm.burn(sxrd_bucket);
+
+            // Return redeemed LSU
+            lsu_bucket.as_fungible()
+        }
+
         /// Claim NFTs and put in XRD Vault
         fn claim_nfts(&mut self, limit: u32) -> Decimal {
             if let Some(ref mut vault) = self.claim_vault {
@@ -492,24 +513,6 @@ mod yield_tokenizer {
             redemption_value
                 .checked_sub(redemption_value_at_start)
                 .unwrap()
-        }
-
-        /// Redeem sXRD for LSU.
-        fn redeem_sxrd_for_lsu(&mut self, sxrd_bucket: FungibleBucket) -> FungibleBucket {
-            assert_eq!(sxrd_bucket.resource_address(), self.sxrd_rm.address());
-
-            let required_lsu_for_sxrd: Decimal =
-                self.calc_required_lsu_for_yield_owed(sxrd_bucket.amount());
-
-            // Apply sXRD redeem for LSU penalty.
-            let required_lsu_for_sxrd =
-                required_lsu_for_sxrd * (Decimal::ONE - self.sxrd_redeem_penalty_rate);
-
-            let lsu_bucket = self.lsu_pool.withdraw(required_lsu_for_sxrd);
-
-            self.lsu_pool.distribute(sxrd_bucket.into());
-
-            lsu_bucket.as_fungible()
         }
 
         /// Unstake LSU and put in LSU Vault
