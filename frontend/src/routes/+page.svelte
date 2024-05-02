@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { LSU, SXRD, TOKENIZER, VALIDATOR, XRD, YT } from '$lib/addresses';
-	import { account_store, tokenizer_store } from '$lib/stores';
 	import {
 		callMethod,
 		depositBatch,
@@ -8,31 +7,29 @@
 		withdrawFungible,
 		withdrawNonFungibles
 	} from '$lib/manifest';
+	import { account_store, tokenizer_store } from '$lib/stores';
 	import { dec } from '$lib/utils/dec';
 	import { sendTransaction } from '$lib/utils/send_tx';
 	import {
 		ActionIcon,
+		Alert,
 		AppShell,
 		Button,
+		Card,
+		Checkbox,
 		Container,
 		Group,
-		Card,
 		Header,
-		SvelteUIProvider,
-		Text,
+		Loader,
+		RadioGroup,
 		Space,
 		Stack,
-		RadioGroup,
-		TextInput,
-		Loader,
-		Checkbox,
-		Alert,
-		Divider
+		SvelteUIProvider,
+		Text,
+		TextInput
 	} from '@svelteuidev/core';
-	import Decimal from 'decimal.js';
 	import { InfoCircled, Moon, Sun } from 'radix-icons-svelte';
-	import { onMount } from 'svelte';
-	import { closeModal, Modals } from 'svelte-modals';
+	import { Modals, closeModal } from 'svelte-modals';
 	import { get } from 'svelte/store';
 
 	export let isDark = false;
@@ -79,7 +76,7 @@
 
 	async function callTokenize() {
 		console.log('calling tokenize');
-		let tokenizeBusy = true;
+		tokenizeBusy = true;
 
 		let tx = '';
 
@@ -159,10 +156,6 @@
 
 		claimYTBusy = false;
 	}
-
-	onMount(() => {
-		// yt_list = ($account_store?.yt_ids ?? []).map((id) => ({ id, selected: false }));
-	});
 </script>
 
 <SvelteUIProvider withGlobalStyles themeObserver={isDark ? 'dark' : 'light'}>
@@ -358,6 +351,7 @@
 					<Group>
 						<Text>Claim YT for:</Text>
 						<RadioGroup items={claimYieldFor} bind:value={valueOfClaimYieldFor} />
+
 						<Button disabled={!anyYTSelected} on:click={claimYTBusy ? null : claimYieldToken}>
 							Claim YT
 							{#if claimYTBusy}

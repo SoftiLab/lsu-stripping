@@ -35,13 +35,13 @@ export class TokenizerComponent extends BaseModel {
         this.$fungible_vaults = account_state['$fungible_vaults']
         this.$non_fungible_resources = account_state['$non_fungible_resources']
 
-        let validator_state = await this.stateFetcher.fetchEntityState(VALIDATOR) as Record<string, any>;
+        // let validator_state = await this.stateFetcher.fetchEntityState(VALIDATOR) as Record<string, any>;
 
-        let ids = await rdt.gatewayApi.state.getAllNonFungibleIds(this.$component_address);
+        // let ids = await rdt.gatewayApi.state.getAllNonFungibleIds(this.$component_address);
 
-        let data = await rdt.gatewayApi.state.getNonFungibleData(this.$component_address, ids);
+        // let data = await rdt.gatewayApi.state.getNonFungibleData(this.$component_address, ids);
 
-        console.log(data)
+        // console.log(data)
 
 
     }

@@ -134,7 +134,7 @@ pub mod staking_pool {
         /// * `gain: FungibleBucket` - The gains to distribute
         ///
         pub fn distribute(&mut self, gain: FungibleBucket) {
-            assert!(!self._is_pool_empty(), "SNAPSHOT_ALREADY_TAKEN");
+            assert!(!self._is_pool_empty(), "DISTRIBUTE_EMPTY_POOL");
 
             let deposits_amount = PreciseDecimal::from(self.deposits.amount());
 

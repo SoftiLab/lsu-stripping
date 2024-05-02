@@ -375,7 +375,7 @@ mod yield_tokenizer {
                         let resource_manager = vault.resource_manager();
                         let data = resource_manager.get_non_fungible_data::<UnstakeData>(id);
 
-                        Runtime::current_epoch() <= data.claim_epoch
+                        Runtime::current_epoch() >= data.claim_epoch
                     })
                     .collect::<IndexSet<NonFungibleLocalId>>();
 
@@ -487,14 +487,6 @@ mod yield_tokenizer {
                 .get_redemption_value(Decimal::ONE);
 
             yield_owed.checked_div(one_lsu_redemption_value).unwrap()
-
-            // let total_xrd_staked = self.lsu_validator_component.total_stake_xrd_amount();
-            // let total_lsu_supply = self.lsu_validator_component.total_stake_unit_supply();
-
-            // total_xrd_staked
-            //     .checked_div(total_lsu_supply)
-            //     .and_then(|result| yield_owed.checked_mul(result))
-            //     .unwrap()
         }
 
         /// Calculates earned yield of YT.
