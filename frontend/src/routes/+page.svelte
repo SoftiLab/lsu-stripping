@@ -28,7 +28,7 @@
 		Text,
 		TextInput
 	} from '@svelteuidev/core';
-	import { InfoCircled, Moon, Sun } from 'radix-icons-svelte';
+	import { Cross2, InfoCircled, Moon, Sun } from 'radix-icons-svelte';
 	import { Modals, closeModal } from 'svelte-modals';
 	import { get } from 'svelte/store';
 
@@ -221,7 +221,13 @@
 					</Group>
 
 					<Group>
-						<TextInput bind:value={tokenizeAmount} />
+						<TextInput bind:value={tokenizeAmount}>
+							<svelte:fragment slot="rightSection">
+								<ActionIcon on:click={() => (tokenizeAmount = '')}>
+									<Cross2 size={16} />
+								</ActionIcon>
+							</svelte:fragment>
+						</TextInput>
 						<Button
 							disabled={dec(tokenizeAmount).eq(dec(0))}
 							on:click={tokenizeBusy ? null : callTokenize}
@@ -258,13 +264,21 @@
 							size="xs"
 							compact
 							on:click={() => {
-								mintSXRDAmount = ($account_store?.$fungible_resources[XRD] ?? dec(0)).toString();
+								mintSXRDAmount = ($account_store?.$fungible_resources[XRD] ?? dec(0))
+									.sub(dec(10))
+									.toString();
 							}}>Use Max</Button
 						>
 					</Group>
 
 					<Group>
-						<TextInput bind:value={mintSXRDAmount} />
+						<TextInput bind:value={mintSXRDAmount}>
+							<svelte:fragment slot="rightSection">
+								<ActionIcon on:click={() => (mintSXRDAmount = '')}>
+									<Cross2 size={16} />
+								</ActionIcon>
+							</svelte:fragment>
+						</TextInput>
 						<Button
 							disabled={dec(mintSXRDAmount).eq(dec(0))}
 							on:click={mintSXRDBusy ? null : mintSXRD}
@@ -305,7 +319,13 @@
 					<Checkbox label="Redeem only for XRD" bind:checked={noLSU} />
 
 					<Group>
-						<TextInput bind:value={redeemSXRDAmount} />
+						<TextInput bind:value={redeemSXRDAmount}>
+							<svelte:fragment slot="rightSection">
+								<ActionIcon on:click={() => (redeemSXRDAmount = '')}>
+									<Cross2 size={16} />
+								</ActionIcon>
+							</svelte:fragment>
+						</TextInput>
 						<Button
 							disabled={dec(redeemSXRDAmount).eq(dec(0))}
 							on:click={redeemSXRDBusy ? null : redeemSXRD}
