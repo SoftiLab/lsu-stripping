@@ -1,6 +1,7 @@
-use lsu_stripper::staking_pool::test_bindings::StakingPool;
+use radix_engine_interface::prelude::*;
 use scrypto::*;
 use scrypto_test::prelude::*;
+use yield_tokenizer::staking_pool::test_bindings::StakingPool;
 
 pub fn arrange() -> Result<
     (
@@ -57,95 +58,119 @@ pub fn asset_pool_base() -> Result<(), RuntimeError> {
 
     // Contribution 0 (User 0)
 
-    staking_pool.contribute(id_0.clone(), lsu.take(dec!(100), &mut env)?, &mut env)?;
+    staking_pool.contribute(
+        id_0.clone(),
+        FungibleBucket(lsu.take(dec!(100), &mut env)?),
+        &mut env,
+    )?;
 
     // Distribution 0
 
-    staking_pool.distribute(sxrd.take(dec!(100), &mut env)?, &mut env)?;
+    staking_pool.distribute(FungibleBucket(sxrd.take(dec!(100), &mut env)?), &mut env)?;
 
     // Contribution 1 (User 1)
 
-    staking_pool.contribute(id_1.clone(), lsu.take(dec!(100), &mut env)?, &mut env)?;
+    staking_pool.contribute(
+        id_1.clone(),
+        FungibleBucket(lsu.take(dec!(100), &mut env)?),
+        &mut env,
+    )?;
 
     // Distribution 1
 
-    staking_pool.distribute(sxrd.take(dec!(100), &mut env)?, &mut env)?;
+    staking_pool.distribute(FungibleBucket(sxrd.take(dec!(100), &mut env)?), &mut env)?;
 
     // Contribution 2 (User 2)
 
-    staking_pool.contribute(id_2.clone(), lsu.take(dec!(200), &mut env)?, &mut env)?;
+    staking_pool.contribute(
+        id_2.clone(),
+        FungibleBucket(lsu.take(dec!(200), &mut env)?),
+        &mut env,
+    )?;
 
     // Withdraw 1
 
     let lsu_withdraw = staking_pool.withdraw(dec!(200), &mut env)?;
-    assert_eq!(lsu_withdraw.amount(&mut env)?, dec!(200));
+    assert_eq!(lsu_withdraw.0.amount(&mut env)?, dec!(200));
 
     // Distribution 2
 
-    staking_pool.distribute(sxrd.take(dec!(100), &mut env)?, &mut env)?;
+    staking_pool.distribute(FungibleBucket(sxrd.take(dec!(100), &mut env)?), &mut env)?;
 
     // Withdraw 2 (Empty the pool to trigger a new epoch)
 
     let lsu_withdraw = staking_pool.withdraw(dec!(200), &mut env)?;
-    assert_eq!(lsu_withdraw.amount(&mut env)?, dec!(200));
+    assert_eq!(lsu_withdraw.0.amount(&mut env)?, dec!(200));
 
     // Epoch 1
 
     // Contribution 3 (User 3)
 
-    staking_pool.contribute(id_3.clone(), lsu.take(dec!(100), &mut env)?, &mut env)?;
+    staking_pool.contribute(
+        id_3.clone(),
+        FungibleBucket(lsu.take(dec!(100), &mut env)?),
+        &mut env,
+    )?;
 
     // Distribution 3
 
-    staking_pool.distribute(sxrd.take(dec!(100), &mut env)?, &mut env)?;
+    staking_pool.distribute(FungibleBucket(sxrd.take(dec!(100), &mut env)?), &mut env)?;
 
     // Contribution 4 (User 4)
 
-    staking_pool.contribute(id_4.clone(), lsu.take(dec!(100), &mut env)?, &mut env)?;
+    staking_pool.contribute(
+        id_4.clone(),
+        FungibleBucket(lsu.take(dec!(100), &mut env)?),
+        &mut env,
+    )?;
 
     // Distribution 4
 
-    staking_pool.distribute(sxrd.take(dec!(100), &mut env)?, &mut env)?;
+    staking_pool.distribute(FungibleBucket(sxrd.take(dec!(100), &mut env)?), &mut env)?;
 
     // Contribution 5 (User 5)
 
-    staking_pool.contribute(id_5.clone(), lsu.take(dec!(200), &mut env)?, &mut env)?;
+    staking_pool.contribute(
+        id_5.clone(),
+        FungibleBucket(lsu.take(dec!(200), &mut env)?),
+        &mut env,
+    )?;
 
     // Distribution 5
 
-    staking_pool.distribute(sxrd.take(dec!(100), &mut env)?, &mut env)?;
+    staking_pool.distribute(FungibleBucket(sxrd.take(dec!(100), &mut env)?), &mut env)?;
 
     // Redemptions Epoch 0
 
     // All user have no more LSU as the pool had been emptied by a withdraw
 
     let (id_0_lsu, id_0_sxrd) = staking_pool.redeem(id_0.clone(), &mut env)?;
-    assert_eq!(id_0_lsu.amount(&mut env)?, dec!(0));
-    assert_eq!(id_0_sxrd.amount(&mut env)?, dec!(175)); // 100 (100% of dist 0) + 50 (50% of dist 1) + 25 (25% of dist 2)
+    assert_eq!(id_0_lsu.0.amount(&mut env)?, dec!(0));
+    assert_eq!(id_0_sxrd.0.amount(&mut env)?, dec!(175)); // 100 (100% of dist 0) + 50 (50% of dist 1) + 25 (25% of dist 2)
 
     let (id_1_lsu, id_1_sxrd) = staking_pool.redeem(id_1.clone(), &mut env)?;
-    assert_eq!(id_1_lsu.amount(&mut env)?, dec!(0));
-    assert_eq!(id_1_sxrd.amount(&mut env)?, dec!(75)); // 50 (50% of dist 1) + 25 (25% of dist 2)
+    assert_eq!(id_1_lsu.0.amount(&mut env)?, dec!(0));
+    assert_eq!(id_1_sxrd.0.amount(&mut env)?, dec!(75)); // 50 (50% of dist 1) + 25 (25% of dist 2)
 
     let (id_2_lsu, id_2_sxrd) = staking_pool.redeem(id_2.clone(), &mut env)?;
-    assert_eq!(id_2_lsu.amount(&mut env)?, dec!(0));
-    assert_eq!(id_2_sxrd.amount(&mut env)?, dec!(50)); // 50 (50% of dist 2)
+    assert_eq!(id_2_lsu.0.amount(&mut env)?, dec!(0));
+    assert_eq!(id_2_sxrd.0.amount(&mut env)?, dec!(50)); // 50 (50% of dist 2)
 
     // Redemptions Epoch 1
 
     // No withdrawn of LSU so all contributors keep their LSU
 
     let (id_3_lsu, id_3_sxrd) = staking_pool.redeem(id_3.clone(), &mut env)?;
-    assert_eq!(id_3_lsu.amount(&mut env)?, dec!(100));
-    assert_eq!(id_3_sxrd.amount(&mut env)?, dec!(175)); // 100 (100% of dist 3) + 50 (50% of dist 4) + 25 (25% of dist 5)
+    assert_eq!(id_3_lsu.0.amount(&mut env)?, dec!(100));
+    assert_eq!(id_3_sxrd.0.amount(&mut env)?, dec!(175)); // 100 (100% of dist 3) + 50 (50% of dist 4) + 25 (25% of dist 5)
 
     let (id_4_lsu, id_4_sxrd) = staking_pool.redeem(id_4.clone(), &mut env)?;
-    assert_eq!(id_4_lsu.amount(&mut env)?, dec!(100));
-    assert_eq!(id_4_sxrd.amount(&mut env)?, dec!(75)); // 50 (50% of dist 4) + 25 (25% of dist 5)
+    assert_eq!(id_4_lsu.0.amount(&mut env)?, dec!(100));
+    assert_eq!(id_4_sxrd.0.amount(&mut env)?, dec!(75)); // 50 (50% of dist 4) + 25 (25% of dist 5)
 
     let (id_5_lsu, id_5_sxrd) = staking_pool.redeem(id_5.clone(), &mut env)?;
-    assert_eq!(id_5_lsu.amount(&mut env)?, dec!(200));
-    assert_eq!(id_5_sxrd.amount(&mut env)?, dec!(50)); // 50 (50% of dist 5)
+    assert_eq!(id_5_lsu.0.amount(&mut env)?, dec!(200));
+    assert_eq!(id_5_sxrd.0.amount(&mut env)?, dec!(50)); // 50 (50% of dist 5)
 
     // No more contributions
     // Withdraw and distribute should fail
@@ -155,7 +180,7 @@ pub fn asset_pool_base() -> Result<(), RuntimeError> {
     // let withdraw_result = staking_pool.withdraw(dec!(200), &mut env);
     // match withdraw_result {
     //     Ok(lsu) => {
-    //         println!("{}", lsu.amount(&mut env)?);
+    //         println!("{}", lsu.0.amount(&mut env)?);
     //         assert!(false, "Should have failed");
     //     }
     //     Err(_) => assert!(true),
@@ -163,7 +188,8 @@ pub fn asset_pool_base() -> Result<(), RuntimeError> {
 
     // distribute on empty pool
 
-    let distribute_result = staking_pool.distribute(sxrd.take(dec!(100), &mut env)?, &mut env);
+    let distribute_result =
+        staking_pool.distribute(FungibleBucket(sxrd.take(dec!(100), &mut env)?), &mut env);
 
     match distribute_result {
         Ok(_) => assert!(false, "Should have failed"),

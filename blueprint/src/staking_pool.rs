@@ -1,7 +1,10 @@
-// This blueprints implement a single asset staking pool based on the Liquity stability pool concept: https://www.liquity.org/blog/scaling-liquitys-stability-pool.
-// The scaling feature described in the blog post is not implemented in this blueprint, we chose to use PreciseDecimal to mitigate the scaling issue of the running product.
-// Ensuring 1:1 peg of sXRD to XRD peg required hard peg mechanism: sXRD need to be redeem with XRD at any time. in case the system lake XRD , sXRD will redeem for corresponding LSU, from a redemption value perspective, and redeemed sXRD will be shared to the LSU provider.
-// The purpose of this staking pool is to allow fair distribution of sXRD to LSU contributor.
+//! This blueprints implement a single asset staking pool based on the Liquity stability pool concept:
+//! https://www.liquity.org/blog/scaling-liquitys-stability-pool.
+//! The scaling feature described in the blog post is not implemented in this blueprint,
+//! we chose to use PreciseDecimal to mitigate the scaling issue of the running product.
+//! Ensuring 1:1 peg of sXRD to XRD peg required hard peg mechanism: sXRD need to be redeem with XRD at any time. in case the system lake XRD ,
+//! sXRD will redeem for corresponding LSU, from a redemption value perspective, and redeemed sXRD will be shared to the LSU provider.
+//! The purpose of this staking pool is to allow fair distribution of sXRD to LSU contributor.
 
 use scrypto::prelude::*;
 
@@ -35,11 +38,11 @@ pub mod staking_pool {
         /// The address of the pool
         pool_res_address: ResourceAddress,
 
-        /// Vault  used to store the deposit of the contributors.
-        deposits: Vault,
+        /// FungibleVault  used to store the deposit of the contributors.
+        deposits: FungibleVault,
 
-        /// Vault storing gain distributed to the contributors.
-        distributed_resources: Vault,
+        /// FungibleVault storing gain distributed to the contributors.
+        distributed_resources: FungibleVault,
 
         /// Each time the pool is emptied, a new epoch is created by incrementing the epoch field.
         current_epoch: u8,
@@ -85,10 +88,10 @@ pub mod staking_pool {
                 running_product: PreciseDecimal::ONE,
                 contribution_counter: 0,
                 redemption_counter: 0,
-                deposits: Vault::new(pool_res_address),
+                deposits: FungibleVault::new(pool_res_address),
                 running_sum: KeyValueStore::new_with_registered_type(),
                 snapshots: KeyValueStore::new_with_registered_type(),
-                distributed_resources: Vault::new(distributed_res_address),
+                distributed_resources: FungibleVault::new(distributed_res_address),
             }
             .instantiate()
         }
@@ -103,9 +106,9 @@ pub mod staking_pool {
         /// * `amount` - The amount to withdraw
         ///
         /// # Returns
-        /// * `Bucket` - Asset withdrawn from the pool
+        /// * `FungibleBucket` - Asset withdrawn from the pool
         ///
-        pub fn withdraw(&mut self, amount: Decimal) -> Bucket {
+        pub fn withdraw(&mut self, amount: Decimal) -> FungibleBucket {
             assert!(amount > dec!(0));
 
             assert!(!self._is_pool_empty());
@@ -128,10 +131,10 @@ pub mod staking_pool {
         /// If this method is call with the base asset of the pool, it will not be compounded. To have the compound effect, use the `deposit` method.
         ///
         /// # Arguments
-        /// * `gain: Bucket` - The gains to distribute
+        /// * `gain: FungibleBucket` - The gains to distribute
         ///
-        pub fn distribute(&mut self, gain: Bucket) {
-            assert!(!self._is_pool_empty(), "SNAPSHOT_ALREADY_TAKEN");
+        pub fn distribute(&mut self, gain: FungibleBucket) {
+            assert!(!self._is_pool_empty(), "DISTRIBUTE_EMPTY_POOL");
 
             let deposits_amount = PreciseDecimal::from(self.deposits.amount());
 
@@ -150,7 +153,7 @@ pub mod staking_pool {
 
         /// * Pool contributors methods * ///
 
-        pub fn contribute(&mut self, id: NonFungibleLocalId, deposit: Bucket) {
+        pub fn contribute(&mut self, id: NonFungibleLocalId, deposit: FungibleBucket) {
             assert!(self.snapshots.get(&id).is_none());
 
             let deposit_amount = deposit.amount();
@@ -189,9 +192,9 @@ pub mod staking_pool {
         /// * `id` - The id of the contributor
         ///
         /// # Returns
-        /// * `Bucket` - The gains of the contributor
+        /// * `FungibleBucket` - The gains of the contributor
         ///
-        pub fn redeem(&mut self, id: NonFungibleLocalId) -> (Bucket, Bucket) {
+        pub fn redeem(&mut self, id: NonFungibleLocalId) -> (FungibleBucket, FungibleBucket) {
             let snapshot = self
                 .snapshots
                 .remove(&id)
