@@ -14,6 +14,7 @@
 		ActionIcon,
 		Alert,
 		AppShell,
+		Badge,
 		Button,
 		Card,
 		Checkbox,
@@ -162,8 +163,9 @@
 	<AppShell fixed>
 		<Header height={75} slot="header" fixed>
 			<Group p="md">
-				<Text>Yield Tokenizer</Text>
-
+				<Text>
+					Welcome to <b>Yield Tokenizer</b>
+				</Text>
 				<Container fluid />
 
 				<ActionIcon color="blue" variant="outline" on:click={toggleTheme} size={32}>
@@ -195,13 +197,24 @@
 
 		<Space h="xl"></Space>
 
+		{#if $account_store == undefined}
+			<Container>
+				<Badge color="red" size="sm" radius="sm" variant="filled">No account connected</Badge>
+			</Container>
+		{/if}
+
+		<Space h="xl"></Space>
+
 		<!-- Tokenize Yield -->
 
 		<Container>
 			<Card shadow="lg" padding="lg">
 				<Stack>
 					<Text weight={'bold'}>Tokenize Yield</Text>
-
+					<Alert>
+						Tokenize you LSU and get sXRD (backed 1:1 with XRD) and a Yield Token (accruing same the
+						network emission as provided LSU)
+					</Alert>
 					<Group>
 						<Text>I have :</Text>
 						<RadioGroup items={lsuOrXrd} bind:value={valueOfLsuOrXrd} />
@@ -218,6 +231,16 @@
 								).toString();
 							}}>Use Max</Button
 						>
+						{#if valueOfLsuOrXrd == LSU}
+							<Button
+								variant="subtle"
+								size="xs"
+								compact
+								color="violet"
+								href="https://stokenet-dashboard.radixdlt.com/network-staking/validator_tdx_2_1s0j35ansmur5q8kxem4edr23j2leutupveqc9g8kuuj29wc7uvmd8z/unstake"
+								target="_blank">Get LSU by staking your XRD</Button
+							>
+						{/if}
 					</Group>
 
 					<Group>
@@ -255,6 +278,11 @@
 			<Card shadow="lg" padding="lg">
 				<Stack>
 					<Text weight={'bold'}>Mint sXRD with XRD</Text>
+
+					<Alert>
+						Mint sXRD with 1:1 XRD and use them in DeFI (Providing liquidity, Take advantage of
+						arbitrage opportunities ...)
+					</Alert>
 
 					<Group>
 						<Text>Available XRD:</Text>
@@ -296,12 +324,17 @@
 
 		<Space h="xl"></Space>
 
-		<!--Redeem sXRD for XRD-->
+		<!--Redeem sXRD-->
 
 		<Container>
 			<Card shadow="lg" padding="lg">
 				<Stack>
 					<Text weight={'bold'}>Redeem sXRD</Text>
+
+					<Alert>
+						Redeem your sXRD for 1:1 XRD. If the pool lakes of XRD you can get LSU with equal
+						redemption value, But you will pay a 3% penalty
+					</Alert>
 
 					<Group>
 						<Text>Available sXRD:</Text>
@@ -316,7 +349,10 @@
 						>
 					</Group>
 
-					<Checkbox label="Redeem only for XRD" bind:checked={noLSU} />
+					<Checkbox
+						label="Redeem only for XRD (Tx will fail if there is not enough XRD)"
+						bind:checked={noLSU}
+					/>
 
 					<Group>
 						<TextInput bind:value={redeemSXRDAmount}>
@@ -349,6 +385,11 @@
 			<Card shadow="lg" padding="lg">
 				<Stack>
 					<Text weight={'bold'}>Claim Yield Token</Text>
+
+					<Alert>
+						Claim your yielded network emission. You can get sXRD that can be used or redeemed or
+						you can get LSU with equal redemption value with no penalty
+					</Alert>
 
 					<Group>
 						<Text>Available YT:</Text>

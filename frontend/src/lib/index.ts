@@ -10,7 +10,7 @@ import {
 import { get } from 'svelte/store';
 
 const options: RadixDappToolkitOptions = {
-    dAppDefinitionAddress: 'account_tdx_2_12yvwgxe8mj9uwtaamt3sereuxe6lkwvrrn92frxtsek83r24y05nv6',
+    dAppDefinitionAddress: 'account_tdx_2_128zgmqg2lclwdnm5pt4kwl9uv0j8m2cwnhpxk9ddfzjm69cadeujr7',
     networkId: 2,
     useCache: true
 };
