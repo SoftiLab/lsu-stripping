@@ -10,21 +10,22 @@ To ensure these functions, the system is structured around 3 processes:
 ### Minting
 Minting involves the creation of sXRD and a YT. It takes LSUs as input. The amount of sXRD created corresponds to the amount of XRD exchangeable with the deposited LSUs. The YT will record the amount of sXRD paid out and will serve as a receipt to represent the share of the deposited LSUs in the total amount of deposited LSUs (similar to a staking receipt). To facilitate arbitrage operations, Minting could also accept XRD deposited in the unstaking vault and create the corresponding sXRD (more details will be provided later).
 
-![sXRD and YT minting](https://res.cloudinary.com/daisvxhyu/image/upload/v1713800056/weft/lsu-strip/mint-sxrd-and-yr.png)
-  
-### Yield Token Conversion
- The conversion of YT happens in two steps. The first step involves withdrawing the LSUs corresponding to the deposited YTs and initiating an unstake. The native unstake receipt is kept within the system. The system will modify the yield receipt to account for the ongoing unstake. The second step involves claiming the native receipt once the unstake waiting period has expired. An amount of XRD will be withheld from the unstake return; this quantity corresponds to the sXRD created during the Minting phase. The withheld XRD are stored in a vault that will serve for the rapid conversion of sXRD.
-
-![Yield claim (sXRD or LSU)](https://res.cloudinary.com/daisvxhyu/image/upload/v1713800058/weft/lsu-strip/redeem-yr.png)
+![sXRD and YT minting](images/mint-sxrd-and-yt.png)
 
 ### sXRD Conversion
 
-The sXRD presented to the system are exchanged for XRD at a 1:1 ratio. The returned XRD come from the Vault containing the XRD obtained during the YT conversion phase. If the pool does not contain enough XRD, the system will enter “forced” mode and will return a quantity of LSUs whose exchange value corresponds to the quantity of XRD to be returned. The forced mode is designed to guarantee sXRD/XRD convertibility and will involve XRD fees that will be distributed to the YT holders in a fair manner to prevent abuse.
+The sXRD presented to the system are exchanged for XRD at a 1:1 ratio. The returned XRD come from the Vault containing the XRD obtained during the YT conversion phase. If the pool does not contain enough XRD, the system will enter “forced” mode and will return a quantity of LSUs whose exchange value corresponds to the quantity of XRD to be returned. The forced mode is designed to guarantee sXRD/XRD convertibility and will involve sXRD penalty that will be distributed to the YT holders.
 
-![sXRD redemption](https://res.cloudinary.com/daisvxhyu/image/upload/v1713800059/weft/lsu-strip/redeem-sxrd.png)
+![sXRD redemption](images/redeem-sxrd.png)
+
+### Yield Token Conversion
+
+ The conversion of YT happens in two steps. The first step involves withdrawing the LSUs corresponding to the deposited YTs and initiating an unstake. The native unstake receipt is kept within the system. The system will modify the yield receipt to account for the ongoing unstake. The second step involves claiming the native receipt once the unstake waiting period has expired. An amount of XRD will be withheld from the unstake return; this quantity corresponds to the sXRD created during the Minting phase. The withheld XRD are stored in a vault that will serve for the rapid conversion of sXRD.
+
+![Yield claim (sXRD or LSU)](images/redeem-yt.png)
 
 ### Fees 
-Fees are levied on two occasions: At the creation of sXRD and during their conversion into XRD. The value of these fees defines a fluctuation range for the price of sXRD in XRD as they set the range around the price where arbitrage opportunities remain profitable.
+Fees are can be levied on two occasions: At the creation of sXRD and during their conversion into XRD. The value of these fees defines a fluctuation range for the price of sXRD in XRD as they set the range around the price where arbitrage opportunities remain profitable. fees are not implemented in this submission but can easily be implemented.
 
 ## Interaction with the External System
 
@@ -51,3 +52,6 @@ Liquidity Risk: As with any financial system, the risk of a lack of liquidity is
 Market Risk: Fluctuations in the price of XRD can affect the value of the created sXRD and the held YTs. If the price of XRD undergoes significant fluctuations, this could impact the value of the assets held in the Yield Tokenizer system, potentially leading to losses for investors.
 
 However, these risks are mitigated by the fact that each sXRD in circulation corresponds to sealed LSUs.
+
+## Demo
+ a POC dApp is available here : 
