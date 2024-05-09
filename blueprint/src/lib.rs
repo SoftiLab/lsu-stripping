@@ -184,8 +184,7 @@ mod yield_tokenizer {
             input_bucket: FungibleBucket,
         ) -> (FungibleBucket, NonFungibleBucket) {
             let lsu_bucket = if input_bucket.resource_address() == XRD {
-                let mut validator = Self::retrieve_validator_component(self.lsu_address);
-                validator.stake(input_bucket.into()).as_fungible()
+                self.lsu_validator_component.stake(input_bucket.into()).as_fungible()
             } else {
                 assert_eq!(input_bucket.resource_address(), self.lsu_address);
 
