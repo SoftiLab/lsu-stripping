@@ -158,8 +158,8 @@ impl TestEnvironment {
             .call_function(
                 package_address,
                 "YieldTokenizer",
-                "instantiate_yield_tokenizer",
-                manifest_args!(expiry, lsu_resource_address),
+                "instantiate",
+                manifest_args!(lsu_resource_address, 10u32, dec!(0), None::<OwnerRole>),
             )
             .build();
 
