@@ -16,16 +16,13 @@ fn tokenize_yield() {
 }
 
 #[test]
-fn redeem() {
+fn tokenize_yield_with_xrd() {
     let mut test_environment = TestEnvironment::instantiate();
-
-    test_environment.tokenize_yield().expect_commit_success();
-
-    test_environment.redeem().expect_commit_success();
+    test_environment.tokenize_yield_with_xrd().expect_commit_success();
 }
 
 #[test]
-fn can_redeem_from_pt_after_maturity() {
+fn claim_yield_for_sxrd() {
     let mut test_environment = TestEnvironment::instantiate();
 
     test_environment.tokenize_yield().expect_commit_success();
@@ -34,27 +31,32 @@ fn can_redeem_from_pt_after_maturity() {
 
     test_environment.advance_date(date);
 
-    test_environment.redeem_from_pt().expect_commit_success();
+    test_environment.claim_yield_for_sxrd().expect_commit_success();
 }
 
 #[test]
-fn cannot_redeem_from_pt_before_maturity() {
+fn claim_yield_for_lsu() {
     let mut test_environment = TestEnvironment::instantiate();
 
     test_environment.tokenize_yield().expect_commit_success();
-
-    test_environment.redeem_from_pt().expect_commit_failure();
-}
-
-#[test]
-fn cannot_tokenize_yield_after_maturity() {
-    let mut test_environment = TestEnvironment::instantiate();
 
     let date = UtcDateTime::new(2025, 03, 06, 0, 0, 0).ok().unwrap();
 
     test_environment.advance_date(date);
 
-    test_environment.tokenize_yield().expect_commit_failure();
+    test_environment.claim_yield_for_lsu().expect_commit_success();
+}
+
+#[test]
+fn mint_sxrd() {
+    let mut test_environment = TestEnvironment::instantiate();
+    test_environment.mint_sxrd().expect_commit_success();
+}
+
+#[test]
+fn redeem_sxrd() {
+    let mut test_environment = TestEnvironment::instantiate();
+    test_environment.redeem_sxrd(true).expect_commit_success();
 }
 
 pub struct Account {
@@ -67,7 +69,7 @@ pub struct TestEnvironment {
     account: Account,
     tokenizer_component: ComponentAddress,
     lsu_resource_address: ResourceAddress,
-    pt_resource: ResourceAddress,
+    sxrd_resource: ResourceAddress,
     yt_resource: ResourceAddress,
 }
 
@@ -96,7 +98,7 @@ impl TestEnvironment {
             GenesisDataChunk::Stakes {
                 accounts,
                 allocations,
-            },
+            }
         ];
 
         let current_date = UtcDateTime::new(2024, 03, 05, 0, 0, 0).ok().unwrap();
@@ -131,9 +133,9 @@ impl TestEnvironment {
         };
 
         let validator_address = test_runner.get_active_validator_with_key(&validator_key);
-        let lsu_resource_address = test_runner
-            .get_active_validator_info_by_key(&validator_key)
-            .stake_unit_resource;
+        let lsu_resource_address = test_runner.get_active_validator_info_by_key(
+            &validator_key
+        ).stake_unit_resource;
 
         let manifest = ManifestBuilder::new()
             .withdraw_from_account(account_component, XRD, dec!(1000))
@@ -147,7 +149,7 @@ impl TestEnvironment {
         test_runner
             .execute_manifest_ignoring_fee(
                 manifest,
-                vec![NonFungibleGlobalId::from_public_key(&public_key)],
+                vec![NonFungibleGlobalId::from_public_key(&public_key)]
             )
             .expect_commit_success();
 
@@ -159,17 +161,17 @@ impl TestEnvironment {
                 package_address,
                 "YieldTokenizer",
                 "instantiate",
-                manifest_args!(lsu_resource_address, 10u32, dec!(0), None::<OwnerRole>),
+                manifest_args!(lsu_resource_address, 10u32, dec!(0), None::<OwnerRole>)
             )
             .build();
 
         let receipt = test_runner.execute_manifest_ignoring_fee(
             manifest,
-            vec![NonFungibleGlobalId::from_public_key(&public_key)],
+            vec![NonFungibleGlobalId::from_public_key(&public_key)]
         );
 
         let tokenizer_component = receipt.expect_commit(true).new_component_addresses()[0];
-        let pt_resource = receipt.expect_commit(true).new_resource_addresses()[0];
+        let sxrd_resource = receipt.expect_commit(true).new_resource_addresses()[0];
         let yt_resource = receipt.expect_commit(true).new_resource_addresses()[1];
 
         Self {
@@ -177,16 +179,14 @@ impl TestEnvironment {
             account,
             tokenizer_component,
             lsu_resource_address,
-            pt_resource,
+            sxrd_resource,
             yt_resource,
         }
     }
 
     pub fn advance_date(&mut self, date: UtcDateTime) {
         let date_ms = date.to_instant().seconds_since_unix_epoch * 1000;
-        let receipt = self
-            .test_runner
-            .advance_to_round_at_timestamp(Round::of(3), date_ms);
+        let receipt = self.test_runner.advance_to_round_at_timestamp(Round::of(3), date_ms);
         receipt.expect_commit_success();
     }
 
@@ -194,22 +194,19 @@ impl TestEnvironment {
         &mut self,
         object_manifest: ManifestObjectNames,
         built_manifest: TransactionManifestV1,
-        name: &str,
+        name: &str
     ) -> TransactionReceiptV1 {
         dump_manifest_to_file_system(
             object_manifest,
             &built_manifest,
             "./transaction_manifest",
             Some(name),
-            &NetworkDefinition::stokenet(),
-        )
-        .ok();
+            &NetworkDefinition::stokenet()
+        ).ok();
 
         let receipt = self.test_runner.execute_manifest_ignoring_fee(
             built_manifest,
-            vec![NonFungibleGlobalId::from_public_key(
-                &self.account.public_key,
-            )],
+            vec![NonFungibleGlobalId::from_public_key(&self.account.public_key)]
         );
 
         return receipt;
@@ -220,7 +217,7 @@ impl TestEnvironment {
             .withdraw_from_account(
                 self.account.account_component,
                 self.lsu_resource_address,
-                dec!(1000),
+                dec!(1000)
             )
             .take_all_from_worktop(self.lsu_resource_address, "LSU Bucket")
             .call_method_with_name_lookup(self.tokenizer_component, "tokenize_yield", |lookup| {
@@ -243,42 +240,64 @@ impl TestEnvironment {
         self.execute_manifest(manifest.object_names(), manifest.build(), "tokenize_yield")
     }
 
-    pub fn redeem(&mut self) -> TransactionReceiptV1 {
+    pub fn claim_yield_for_sxrd(&mut self) -> TransactionReceiptV1 {
         let manifest = ManifestBuilder::new()
-            .withdraw_from_account(self.account.account_component, self.pt_resource, dec!(1000))
             .withdraw_from_account(self.account.account_component, self.yt_resource, dec!(1))
-            .take_all_from_worktop(self.pt_resource, "PT Bucket")
             .take_all_from_worktop(self.yt_resource, "YT Bucket")
-            .call_method_with_name_lookup(self.tokenizer_component, "redeem", |lookup| {
-                (
-                    lookup.bucket("PT Bucket"),
-                    lookup.bucket("YT Bucket"),
-                    dec!(1000),
-                )
-            })
+            .call_method_with_name_lookup(
+                self.tokenizer_component,
+                "claim_yield_for_sxrd",
+                |lookup| { (lookup.bucket("YT Bucket"),) }
+            )
             .deposit_batch(self.account.account_component);
 
-        self.execute_manifest(manifest.object_names(), manifest.build(), "redeem")
+        self.execute_manifest(manifest.object_names(), manifest.build(), "claim_yield_for_sxrd")
     }
 
-    pub fn redeem_from_pt(&mut self) -> TransactionReceiptV1 {
+    pub fn claim_yield_for_lsu(&mut self) -> TransactionReceiptV1 {
         let manifest = ManifestBuilder::new()
-            .withdraw_from_account(self.account.account_component, self.pt_resource, dec!(1000))
-            .take_all_from_worktop(self.pt_resource, "PT Bucket")
-            .call_method_with_name_lookup(self.tokenizer_component, "redeem_from_pt", |lookup| {
-                (lookup.bucket("PT Bucket"),)
+            .withdraw_from_account(self.account.account_component, self.yt_resource, dec!(1))
+            .take_all_from_worktop(self.yt_resource, "YT Bucket")
+            .call_method_with_name_lookup(
+                self.tokenizer_component,
+                "claim_yield_for_lsu",
+                |lookup| { (lookup.bucket("YT Bucket"),) }
+            )
+            .deposit_batch(self.account.account_component);
+
+        self.execute_manifest(manifest.object_names(), manifest.build(), "claim_yield_for_lsu")
+    }
+
+    pub fn mint_sxrd(&mut self) -> TransactionReceiptV1 {
+        let manifest = ManifestBuilder::new()
+            .withdraw_from_account(self.account.account_component, XRD, dec!(500))
+            .take_all_from_worktop(XRD, "xrd")
+            .call_method_with_name_lookup(self.tokenizer_component, "mint_sxrd", |lookup| {
+                (lookup.bucket("xrd"),)
             })
             .deposit_batch(self.account.account_component);
 
-        self.execute_manifest(manifest.object_names(), manifest.build(), "redeem_from_pt")
+        self.execute_manifest(manifest.object_names(), manifest.build(), "mint_sxrd")
     }
 
-    pub fn claim_yield(&mut self, local_id: NonFungibleLocalId) -> TransactionReceiptV1 {
+    pub fn redeem_sxrd(&mut self, only_xrd: bool) -> TransactionReceiptV1 {
+        let manifest = ManifestBuilder::new()
+            .withdraw_from_account(self.account.account_component, self.sxrd_resource, dec!(1000))
+            .take_all_from_worktop(self.sxrd_resource, "sXRD Bucket")
+            .call_method_with_name_lookup(self.tokenizer_component, "redeem_sxrd", |lookup| {
+                (lookup.bucket("sXRD Bucket"), only_xrd)
+            })
+            .deposit_batch(self.account.account_component);
+
+        self.execute_manifest(manifest.object_names(), manifest.build(), "redeem_sxrd")
+    }
+
+    pub fn claim_yield_with_id(&mut self, local_id: NonFungibleLocalId) -> TransactionReceiptV1 {
         let manifest = ManifestBuilder::new()
             .create_proof_from_account_of_non_fungibles(
                 self.account.account_component,
                 self.yt_resource,
-                [local_id],
+                [local_id]
             )
             .pop_from_auth_zone("YT Proof")
             .call_method_with_name_lookup(self.tokenizer_component, "claim_yield", |lookup| {
