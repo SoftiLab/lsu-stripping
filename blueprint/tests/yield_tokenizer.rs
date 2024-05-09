@@ -57,13 +57,6 @@ fn cannot_tokenize_yield_after_maturity() {
     test_environment.tokenize_yield().expect_commit_failure();
 }
 
-#[derive(ScryptoSbor, ManifestSbor)]
-pub enum Expiry {
-    TwelveMonths,
-    EighteenMonths,
-    TwentyFourMonths,
-}
-
 pub struct Account {
     public_key: Secp256k1PublicKey,
     account_component: ComponentAddress,
@@ -160,8 +153,6 @@ impl TestEnvironment {
 
         // Publish package
         let package_address = test_runner.compile_and_publish(this_package!());
-
-        let expiry = Expiry::TwelveMonths;
 
         let manifest = ManifestBuilder::new()
             .call_function(
