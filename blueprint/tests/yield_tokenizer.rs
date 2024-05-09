@@ -231,6 +231,18 @@ impl TestEnvironment {
         self.execute_manifest(manifest.object_names(), manifest.build(), "tokenize_yield")
     }
 
+    pub fn tokenize_yield_with_xrd(&mut self) -> TransactionReceiptV1 {
+        let manifest = ManifestBuilder::new()
+            .withdraw_from_account(self.account.account_component, XRD, dec!(500))
+            .take_all_from_worktop(XRD, "xrd")
+            .call_method_with_name_lookup(self.tokenizer_component, "tokenize_yield", |lookup| {
+                (lookup.bucket("xrd"),)
+            })
+            .deposit_batch(self.account.account_component);
+
+        self.execute_manifest(manifest.object_names(), manifest.build(), "tokenize_yield")
+    }
+
     pub fn redeem(&mut self) -> TransactionReceiptV1 {
         let manifest = ManifestBuilder::new()
             .withdraw_from_account(self.account.account_component, self.pt_resource, dec!(1000))
